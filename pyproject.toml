@@ -1,0 +1,28 @@
+[project]
+name = "shadow"
+version = "1.0.0"
+description = "Replies to your Instagram DMs in your voice"
+requires-python = ">=3.11"
+dependencies = [
+    # Nemotron on Bedrock goes through boto3 Converse. Declared explicitly
+    # because brain.py imports it directly, not just via anthropic[bedrock].
+    "boto3>=1.40.0",
+    "playwright>=1.44.0",
+    "click>=8.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+# Only needed if SHADOW_PROVIDER is switched to a Claude path.
+claude = ["anthropic[bedrock]>=0.120.0"]
+
+[project.scripts]
+shadow = "shadow.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shadow*"]
+
+[build-system]
+requires = ["setuptools>=72.0"]
+build-backend = "setuptools.build_meta"
