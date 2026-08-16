@@ -1,31 +1,14 @@
-# secrets
+# SECRETS - the only things kept out of this repo.
 .env
 .credentials-archive/
 
-# runtime state and logs
-.shadow_state.json
-shadow.log
-probe.json
-
-# real chat histories and per-person profiles — private
-data/
-
-# python
+# python build artifacts
 __pycache__/
 *.py[cod]
 .venv/
 *.egg-info/
 .pytest_cache/
 
-# tooling
-graphify-out/
-.code-review-graph/
-.playwright-mcp/
-.obsidian/
-
-# Derived from data/ - contain real message text and real names.
-# Regenerate with: python build_voice.py && python make_eval_set.py
-voice.json
-eval_cases.json
-data-backup-*.tar.gz
-drive-shots/
+# NOTE: data/, voice.json, eval_cases.json and the graphify output ARE
+# committed on purpose. This is a private repo and it is the only copy - the
+# chat corpus is what voice.json is built from, so losing it loses the voice.
