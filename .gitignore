@@ -1,4 +1,4 @@
-# SECRETS - the only things kept out of this repo.
+# Secrets and local credentials.
 .env
 .credentials-archive/
 
@@ -9,6 +9,40 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
-# NOTE: data/, voice.json, eval_cases.json and the graphify output ARE
-# committed on purpose. This is a private repo and it is the only copy - the
-# chat corpus is what voice.json is built from, so losing it loses the voice.
+# Private artifacts: do not include these in an open-source release.
+# Already-tracked files and Git history remain private-data risks; see plan/privacy.md.
+/data/
+/voice.json
+/personality.md
+/eval_cases.json
+/.shadow_state.json
+*.log
+/data-backup-*.tar.gz
+/backups/
+/private/
+/runtime/
+/exports/
+/captures/
+/screenshots/
+/traces/
+/eval-results/
+/graphify-out/
+/.reticle/
+/.code-review-graph/
+/.claude/settings.local.json
+/.mcp.json
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-wal
+*.db-shm
+/browser-profile/
+/chrome-profile/
+/storage-state.json
+/cookies.json
