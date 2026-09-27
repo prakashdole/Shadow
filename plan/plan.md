@@ -1,6 +1,6 @@
 # Shadow implementation plan
 
-Specification version: 2.0, 2026-09-24. Status: planned, not implemented.
+Specification version: 2.1, 2026-09-27 (post-review amendments D18-D28). Status: planned, not implemented.
 
 ## Read this first
 
@@ -38,31 +38,34 @@ Implementation can proceed without repeated design interviews. External-account 
 
 ## Milestones and order
 
-- P00: publication containment, portable fixtures, baseline evidence.
-- P01: canonical local state, migrations, event identity, durable outbox.
-- P02: correct DOM reading and recipient verification, browser fixture harness.
-- P03: safe sending, reconciliation, scheduling, full coordinator integration.
-- P04: authenticated Telegram controls and durable notifications.
-- P05: versioned provider-neutral generation and contextual risk decisions.
+- P00: publication containment, portable fixtures, baseline evidence, requirement matrix.
+- P00b: read-only live DOM discovery (identifiers, preview signals, receipts/challenge indicators).
+- P01: canonical local state, settings module, migrations, event identity, durable outbox.
+- P02: correct DOM reading and recipient verification, browser fixture harness, in-page steady state.
+- P03: safe sending, reconciliation, adaptive scheduling, active hours, takeover, modes, coordinator integration.
+- P04: authenticated Telegram controls, assisted approvals, tiered alerts and digest.
+- P05: provider-neutral risk/reply/extraction roles, contextual policy, live quality guard.
 - P06: relevant memory, correction learning, natural conversational style.
 - P07: held-out evaluation, adversarial tests, provider qualification.
-- P08: packaging, deployment, recovery, resource measurements.
-- P09: controlled acceptance, independent review evidence, release preparation.
+- P08: packaging, home-host deployment, hardening, recovery, resource measurements.
+- P09: controlled acceptance, assisted pilot, release preparation.
 
-P01-P03 form one reliability milestone; autonomous sending stays disabled throughout it. P04-P06 form the adaptation milestone. P07-P09 establish release evidence. Partial milestones are useful checkpoints, not launch approval.
+P00b-P03 form the reliability milestone and run only in `observe`. P04-P05 complete the **assisted milestone**: the first stage the owner uses day to day, drafting replies for Send/Edit/Skip in Telegram once a model is qualified for assisted use. P06-P07 improve memory and establish quality evidence. P08-P09 deliver deployment, the assisted pilot and, after it passes, owner-scoped autonomy. Partial milestones are useful checkpoints, not launch approval. v1 scope and deferred items are listed in [prd.md](prd.md#v1-core-and-deferred-scope).
 
 ## Explicit defaults and unresolved activation inputs
 
 - Developer-first installation; one process/owner/account; English Instagram UI initially.
-- Persistent Chromium controlled by Playwright/CDP; measure before replacing any transport.
+- Persistent Chromium in a dedicated profile controlled by Playwright/CDP; measure before replacing any transport.
 - SQLite through the standard library; no Redis, vector database, microservices, fine-tuning, or model router for v1.
-- One selected model at a time; selection is pending the owner, not hard-coded by this plan.
-- Normally reply 120-180 seconds after the latest inbound event; timing does not imply an availability guarantee.
-- Unknown contacts: only incoming one-to-one DMs, cautious style, no proactive outreach. Ambiguous identity stays paused.
-- First release handles text. Unsupported media and groups produce a deduplicated owner notification, not invented interpretation.
+- One selected model per role (risk, reply, extraction; may be the same); selection is pending the owner, not hard-coded by this plan.
+- Fresh installs start in `observe`; the owner moves to `assisted`, then to `autonomous` for chosen contacts.
+- Pacing adapts to conversation momentum and the owner's measured reply latency within owner-set active hours; all numbers live in the [TRD settings table](trd.md#settings-single-source-of-truth). Timing does not imply an availability guarantee.
+- Owner read receipts are permanently off. Activity status is an owner choice made at setup.
+- Unknown contacts: held until the owner approves them, then cautious drafts only; no proactive outreach. Ambiguous identity stays paused.
+- First release handles text. Unsupported media and groups go to the digest, not invented interpretation.
 - Source and synthetic fixtures are public; archives, facts, voice data, sessions, and private evidence are not.
-- Hosting budget target is roughly USD 5/month excluding model API charges. Browser memory requirements must be measured before claiming it fits.
-- Whether the repository was previously public is unconfirmed. Publication preparation must handle this as unknown exposure, not assume no exposure.
+- Recommended host is an always-on machine on the owner's home network; a VPS is supported but raises login-challenge risk. Hosting budget target is roughly USD 5/month excluding model API charges. Browser memory requirements must be measured before claiming it fits.
+- The original GitHub repository was observed public on 2026-09-27 with owner-identifying prompt text; see [privacy.md](privacy.md#current-release-blocker). Publication preparation treats it as already exposed.
 - Direct questions about automation must not receive a false denial. Routine replies use the owner's voice without assistant boilerplate. This is an explicit limitation relative to the requested unconditional denial rule.
 
 ## What this planning stage delivers
