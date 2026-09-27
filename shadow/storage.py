@@ -408,7 +408,15 @@ class Storage:
     @contextmanager
     def transaction(self):
         """One explicit write transaction. Rolls back on any exception, so a
-        crash or a raised error never leaves half of a change behind."""
+        crash or a raised error never leaves half of a change behind.
+
+        A nested call joins the transaction that is already open, which is how
+        the importer commits a whole folder with one fsync. An exception from
+        an inner `with` still propagates to the outer COMMIT/ROLLBACK.
+        """
+        if self._conn.in_transaction:
+            yield self._conn
+            return
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             yield self._conn
@@ -619,6 +627,8 @@ class Storage:
             "import_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             values,
         )
+        if ignore_conflict and cursor.rowcount == 0:
+            return 0  # already imported; the caller counts it as a duplicate
         return cursor.lastrowid
 
     def add_event(self, *, ignore_conflict: bool = False, **fields) -> int:
@@ -627,7 +637,8 @@ class Storage:
         Without `ignore_conflict` a repeated platform message id inside one
         conversation raises IntegrityError, because "the same text twice" is
         two events but "the same platform id twice" is one event seen twice.
-        `ignore_conflict=True` is for idempotent re-import only.
+        `ignore_conflict=True` is for idempotent re-import only, and returns 0
+        for a row that was already there.
         """
         with self.transaction() as conn:
             return self._insert_event(conn, ignore_conflict=ignore_conflict, **fields)
