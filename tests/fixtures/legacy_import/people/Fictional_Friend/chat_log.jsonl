@@ -1,0 +1,21 @@
+{"ts": "2024-03-01T09:00:00Z", "sender": "them", "content": "kya scene hai", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:02:00Z", "sender": "me", "content": "boring, kuch nahi", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:03:00Z", "sender": "them", "content": "😅😅", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:04:00Z", "sender": "me", "content": "ha", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:05:00Z", "sender": "them", "content": "ha", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:06:00Z", "sender": "me", "content": "ha", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:07:00Z", "sender": "them", "content": "[reel]", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:08:00Z", "sender": "them", "content": "Reacted ❤️ to your message", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:09:00Z", "sender": "me", "content": "This message was unsent.", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:10:00Z", "sender": "them", "content": "bhai ek kaam tha, kal bata deta hu", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:11:00Z", "sender": "them", "content": "", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:12:00Z", "sender": "them", "content": "https://example.invalid/fictional-article", "type": "link", "platform": "instagram"}
+{"ts": "2024-03-01T10:00:00Z", "sender": "them", "content": "batch written one", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T10:00:00Z", "sender": "me", "content": "batch written two", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T10:00:00Z", "sender": "them", "content": "batch written three", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T10:05:00Z", "sender": "me", "content": "aur haan, weekend plan confirm kar de", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:20:00Z", "sender": "them", "content": "ok, milte hai", "type": "text", "platform":instagram"}
+{"ts": "2024-03-01T09:21:00Z", "content": "no sender here", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:22:00Z", "sender": "someone_else", "content": "who is this", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:23:00Z", "sender": "them", "type": "text", "platform": "instagram"}
+{"ts": "2024-03-01T09:24:00Z", "sender": "them", "content": {"nested": true}, "type": "text", "platform": "instagram"}

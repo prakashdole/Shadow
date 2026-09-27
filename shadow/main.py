@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
+import os
 import sys
+from datetime import datetime, timezone
 
 import click
 
@@ -40,16 +41,43 @@ def cli() -> None:
 @click.option("--dry-run", is_flag=True, help="Print replies instead of sending.")
 @click.option("--verbose", is_flag=True)
 def run(once: bool, dry_run: bool, verbose: bool) -> None:
-    """Start the bot. Chrome must already be running with --remote-debugging-port=9222."""
-    setup_logging(verbose)
-    from shadow.loop import run as _run
-    try:
-        asyncio.run(_run(once=once, dry_run=dry_run))
-    except KeyboardInterrupt:
-        click.echo("\nstopped")
-    except RuntimeError as e:
-        click.echo(f"\n{e}", err=True)
-        raise SystemExit(1)
+    """Start the bot. Disabled since P01; see the message it prints."""
+    click.echo(
+        "Legacy runtime is disabled since P01: its send path can address the "
+        "wrong chat and record unsent replies. The new runtime arrives in P03. "
+        "Offline check: `shadow reply`."
+    )
+    raise SystemExit(2)
+
+
+@cli.command("import-history")
+@click.option("--source", required=True, type=click.Path(exists=True),
+              help="Directory holding people/<folder>/chat_log.jsonl.")
+@click.option("--dry-run", is_flag=True, help="Import into a throwaway database.")
+@click.option("--i-have-a-verified-backup", is_flag=True,
+              help="Confirm the originals are backed up before a live import.")
+def import_history(source: str, dry_run: bool, i_have_a_verified_backup: bool) -> None:
+    """Import legacy history. Reports counts only; never modifies the source."""
+    from shadow.legacy_import import run_import
+    from shadow.settings import data_dir
+
+    scratch = None
+    if not dry_run:
+        if not os.environ.get("SHADOW_DATA_DIR"):
+            raise SystemExit(
+                "SHADOW_DATA_DIR is not set. Point it at the private data "
+                "directory before a live import, then re-run."
+            )
+        if not i_have_a_verified_backup:
+            raise SystemExit(
+                "Refusing a live import without --i-have-a-verified-backup. "
+                "The originals are left in place either way; copy them first, "
+                "or run --dry-run to see the counts."
+            )
+    else:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        scratch = data_dir() / "private" / "p01" / f"dryrun-{stamp}"
+    click.echo(run_import(source, None, dry_run=dry_run, scratch_dir=scratch).as_text())
 
 
 @cli.command()
