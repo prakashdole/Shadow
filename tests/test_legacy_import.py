@@ -51,6 +51,10 @@ class TestImportCounts(ImportCase):
     def test_counts_reconcile(self) -> None:
         report = LI.run_import(FIXTURES, self.storage)
         self.assertEqual(report.folders, 3)
+        # A folder with a profile but no chat log is not an imported history.
+        (self.root / "empty" / "people" / "Profile_Only").mkdir(parents=True)
+        (self.root / "empty" / "people" / "Profile_Only" / "profile.json").write_text("{}")
+        self.assertEqual(LI.run_import(self.root / "empty", self.storage).folders, 0)
         self.assertEqual(
             report.rows_imported + report.rows_duplicate + sum(report.quarantined.values()),
             report.rows_total,

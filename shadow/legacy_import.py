@@ -62,7 +62,7 @@ class ImportAborted(Exception):
 class ImportReport:
     """Counts only. No folder names, no names, no message content."""
 
-    folders: int = 0
+    folders: int = 0  # folders that held a chat log
     rows_total: int = 0
     rows_imported: int = 0
     rows_duplicate: int = 0
@@ -221,14 +221,16 @@ def run_import(
     """
     source_root = Path(source_root)
     people = _people_root(source_root)
-    folders = sorted(path for path in people.iterdir() if path.is_dir())
 
     input_files: dict[Path, str] = {}
-    for folder in folders:
+    for folder in sorted(path for path in people.iterdir() if path.is_dir()):
         for name in (CHAT_LOG, PROFILE):
             candidate = folder / name
             if candidate.is_file():
                 input_files[candidate] = _sha256(candidate)
+    # A folder counts once it has a chat log; a stray profile.json is not an
+    # imported history.
+    folders = sorted({path.parent for path in input_files if path.name == CHAT_LOG})
     # Read every input before writing anything, then hash again: a file that
     # changed under us aborts the import with the destination untouched.
     contents = {path: path.read_bytes() for path in input_files}
