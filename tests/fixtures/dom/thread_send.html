@@ -1,0 +1,227 @@
+<!doctype html>
+<!--
+  Fictional composer fixture for the P02 send primitive.
+
+  The page is inert until Enter is pressed in
+  div[contenteditable="true"][aria-label="Message"], and then does exactly one
+  thing chosen by location.hash:
+
+    #append_owner        append one new owner bubble with the typed text
+    #append_owner_delayed  the same, 400 ms later, to exercise the poll loop
+    #append_incoming     append an INCOMING bubble instead of an owner bubble
+    #nothing             nothing happens at all
+    #error_marker        append an owner bubble AND an error leaf on the page
+    #duplicate_old       nothing happens; an identical owner bubble with the
+                        text "pong" is already on screen before the attempt
+
+  Everything here is invented. No class name is copied from Instagram.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture - composer thread</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1200px; height: 736px; display: flex;
+         font: 14px/1.4 system-ui, sans-serif; background: #fff; }
+  .list { width: 460px; background: #f6f6f6; border-right: 1px solid #ddd; }
+  .navtitle { height: 30px; padding: 6px 12px; font-weight: 600; }
+  .navitem { height: 140px; padding: 12px; }
+  .wrap { height: 72px; }
+  .row { height: 72px; display: flex; gap: 10px; padding: 8px 12px; }
+  .row[aria-pressed="true"] { background: #e9e9e9; }
+  .avatar { width: 44px; height: 44px; border-radius: 50%; background: #ccc; flex: none; }
+  .avatars { display: flex; flex: none; }
+  .avatars .avatar { margin-left: -12px; border: 2px solid #f6f6f6; }
+  .avatars .avatar:first-child { margin-left: 0; }
+  .col { display: flex; flex-direction: column; gap: 2px; }
+  .name { font-weight: 600; }
+  .preview, .age { color: #666; }
+  .right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .head { height: 64px; display: flex; align-items: center; gap: 10px;
+          padding: 0 16px; border-bottom: 1px solid #eee; }
+  .headlink { color: inherit; text-decoration: none; font-weight: 600; }
+  .pane { flex: 1; overflow-y: auto; padding: 12px 16px; }
+  .static { flex: 1; padding: 12px 16px; }
+  .grp { display: flex; flex-direction: column; }
+  .line { display: flex; margin: 4px 0; }
+  .line.me { justify-content: flex-end; }
+  .art { display: inline-flex; flex-direction: column; max-width: 60%;
+         border-radius: 18px; padding: 8px 12px; background: #efefef; }
+  .line.me .art { background: #dcf8c6; }
+  .a11y { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .emo { height: 18px; vertical-align: middle; }
+  .sep { width: 98%; text-align: center; color: #888; font-size: 12px; margin: 12px 0; }
+  .meta { font-size: 11px; color: #888; }
+  .quote { border-left: 2px solid #bbb; padding-left: 8px; color: #666; margin-bottom: 4px; }
+  .card { display: flex; flex-direction: column; border: 1px solid #ddd;
+          border-radius: 12px; overflow: hidden; background: #fff; }
+  .card a { display: flex; align-items: center; gap: 8px; padding: 8px;
+            color: inherit; text-decoration: none; }
+  .thumb { width: 40px; height: 40px; background: #bbb; flex: none; }
+  .cardlast { padding: 6px 8px; border-top: 1px solid #eee; color: #666; font-size: 12px; }
+  .spacer { height: 900px; }
+  .composer { height: 44px; border-top: 1px solid #eee; display: flex; align-items: center;
+              padding: 0 12px; gap: 8px; }
+  .composer [contenteditable="true"] { flex: 1; min-height: 20px; padding: 4px 8px;
+            outline: none; background: #f2f2f2; border-radius: 16px; }</style>
+</head>
+<body>
+  <div class="list" role="navigation" aria-label="Thread list">
+    <div role="button" tabindex="0" class="navtitle">Test Inbox</div>
+    <div role="button" tabindex="0" class="navitem">
+      <div>Messages &bull; 5</div>
+      <div>Your note</div>
+    </div>
+    <div class="wrap">
+      <div role="button" tabindex="0" class="row" aria-pressed="true">
+        <div class="avatars"><img class="avatar" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt=""></div>
+        <div class="col">
+          <div class="name">Test Contact Nine</div>
+          <div class="preview">kal plan hai? &middot; 1m</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="head">
+    <a class="headlink" href="/test_contact_nine/"><img class="avatar" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="">Test Contact Nine</a>
+    <a class="headlink" href="/test_contact_nine/">Test Contact Nine</a>
+  </div>
+  <div class="right">
+  <div class="pane">
+  <div class="spacer"></div>
+      <div class="grp"><div role="none" id="p0"><div class="line">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">hello there</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line me">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">pong</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">are you there?</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line me">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">pong</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none"><div class="line">
+        <div dir="auto" class="sep">12 Sep, 3:04</div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">still waiting</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line me">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">on it</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">one more thing</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none"><div class="line">
+        <div dir="auto" class="meta">Test Contact Nine reacted to your message</div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line me">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">what is it</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">kya scene hai</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line me">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">bas yahi</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">ok</div>
+        </div>
+      </div></div></div>
+      <div class="grp"><div role="none" id="p0"><div class="line me">
+        <div role="article" class="art" tabindex="0" aria-labelledby="a0" aria-roledescription="message">
+          <span id="a0" class="a11y">Message</span>
+          <div dir="auto">bye</div>
+        </div>
+      </div></div></div>
+  <div class="composer">
+    <div contenteditable="true" aria-label="Message"></div>
+    <button type="button">Send</button>
+  </div>
+  </div>
+
+  <script>
+  // Two owner bubbles with the text "pong" are already on screen, so a
+  // count-based confirmation can tell a new bubble from an old one.
+  (function () {
+    const pane = document.querySelector('.pane');
+    const box = document.querySelector('div[contenteditable="true"][aria-label="Message"]');
+    pane.scrollTop = pane.scrollHeight;
+
+    function append(side, text, cls) {
+      const grp = document.createElement('div');
+      grp.className = 'grp';
+      const line = document.createElement('div');
+      line.className = 'line' + (side === 'owner' ? ' me' : '');
+      const art = document.createElement('div');
+      art.setAttribute('role', 'article');
+      art.className = 'art';
+      art.setAttribute('tabindex', '0');
+      art.setAttribute('aria-roledescription', 'message');
+      const leafEl = document.createElement('div');
+      leafEl.setAttribute('dir', 'auto');
+      leafEl.textContent = text;
+      art.appendChild(leafEl);
+      line.appendChild(art);
+      grp.appendChild(line);
+      pane.appendChild(grp);
+    }
+    function appendError() {
+      const grp = document.createElement('div');
+      grp.className = 'grp';
+      grp.innerHTML = '<div class="line"><div dir="auto" class="meta">' +
+                      'Couldn\'t send. Tap to retry.</div></div>';
+      pane.appendChild(grp);
+    }
+
+    box.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      const text = (box.innerText || '').trim();
+      if (!text) return;
+      box.innerText = '';
+      const mode = (location.hash || '').replace('#', '');
+      if (mode === 'append_owner') append('owner', text);
+      else if (mode === 'append_owner_delayed') setTimeout(function () { append('owner', text); }, 400);
+      else if (mode === 'append_incoming') append('contact', 'unrelated inbound line');
+      else if (mode === 'error_marker') { append('owner', text); appendError(); }
+      else if (mode === 'nothing' || mode === 'duplicate_old') { /* deliberately inert */ }
+    });
+  })();
+  </script>
+</body>
+</html>

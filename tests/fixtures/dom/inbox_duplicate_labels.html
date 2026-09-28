@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+  Fictional inbox where two different threads render the SAME display
+  label. P00b Q1: a row exposes no id, so a display label cannot identify a
+  thread. The reader must report label_is_unique=False for both and refuse to
+  pick one; that is B02's identical-names case.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture - inbox with duplicate labels</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1200px; height: 736px; display: flex;
+         font: 14px/1.4 system-ui, sans-serif; background: #fff; }
+  .list { width: 460px; background: #f6f6f6; border-right: 1px solid #ddd; }
+  .navtitle { height: 30px; padding: 6px 12px; font-weight: 600; }
+  .navitem { height: 140px; padding: 12px; }
+  .wrap { height: 72px; }
+  .row { height: 72px; display: flex; gap: 10px; padding: 8px 12px; }
+  .row[aria-pressed="true"] { background: #e9e9e9; }
+  .avatar { width: 44px; height: 44px; border-radius: 50%; background: #ccc; flex: none; }
+  .avatars { display: flex; flex: none; }
+  .avatars .avatar { margin-left: -12px; border: 2px solid #f6f6f6; }
+  .avatars .avatar:first-child { margin-left: 0; }
+  .col { display: flex; flex-direction: column; gap: 2px; }
+  .name { font-weight: 600; }
+  .preview, .age { color: #666; }
+  .right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .head { height: 64px; display: flex; align-items: center; gap: 10px;
+          padding: 0 16px; border-bottom: 1px solid #eee; }
+  .headlink { color: inherit; text-decoration: none; font-weight: 600; }
+  .pane { flex: 1; overflow-y: auto; padding: 12px 16px; }
+  .static { flex: 1; padding: 12px 16px; }
+  .grp { display: flex; flex-direction: column; }
+  .line { display: flex; margin: 4px 0; }
+  .line.me { justify-content: flex-end; }
+  .art { display: inline-flex; flex-direction: column; max-width: 60%;
+         border-radius: 18px; padding: 8px 12px; background: #efefef; }
+  .line.me .art { background: #dcf8c6; }
+  .a11y { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .emo { height: 18px; vertical-align: middle; }
+  .sep { width: 98%; text-align: center; color: #888; font-size: 12px; margin: 12px 0; }
+  .meta { font-size: 11px; color: #888; }
+  .quote { border-left: 2px solid #bbb; padding-left: 8px; color: #666; margin-bottom: 4px; }
+  .card { display: flex; flex-direction: column; border: 1px solid #ddd;
+          border-radius: 12px; overflow: hidden; background: #fff; }
+  .card a { display: flex; align-items: center; gap: 8px; padding: 8px;
+            color: inherit; text-decoration: none; }
+  .thumb { width: 40px; height: 40px; background: #bbb; flex: none; }
+  .cardlast { padding: 6px 8px; border-top: 1px solid #eee; color: #666; font-size: 12px; }
+  .spacer { height: 900px; }
+  .composer { height: 44px; border-top: 1px solid #eee; display: flex; align-items: center;
+              padding: 0 12px; gap: 8px; }
+  .composer [contenteditable="true"] { flex: 1; min-height: 20px; padding: 4px 8px;
+            outline: none; background: #f2f2f2; border-radius: 16px; }</style>
+</head>
+<body>
+  <div class="list" role="navigation" aria-label="Thread list">
+    <div role="button" tabindex="0" class="navtitle">Test Inbox</div>
+    <div role="button" tabindex="0" class="navitem">
+      <div>Messages &bull; 5</div>
+      <div>Your note</div>
+    </div>
+    <div class="wrap">
+      <div role="button" tabindex="0" class="row">
+        <div class="avatars"><img class="avatar" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt=""></div>
+        <div class="col">
+          <div class="name">Test Contact Ten</div>
+          <div class="preview">hello &middot; 1m</div>
+        </div>
+      </div>
+    </div>
+    <div class="wrap">
+      <div role="button" tabindex="0" class="row">
+        <div class="avatars"><img class="avatar" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt=""></div>
+        <div class="col">
+          <div class="name">Test Contact Ten</div>
+          <div class="preview">hello again &middot; 2m</div>
+        </div>
+      </div>
+    </div>
+    <div class="wrap">
+      <div role="button" tabindex="0" class="row">
+        <div class="avatars"><img class="avatar" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt=""></div>
+        <div class="col">
+          <div class="name">Test Contact Eleven</div>
+          <div class="preview">hi &middot; 3m</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="empty" style="flex:1;background:#fff"></div>
+</body>
+</html>

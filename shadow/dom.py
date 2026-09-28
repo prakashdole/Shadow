@@ -369,13 +369,14 @@ def inbox_status(raw: dict) -> tuple[ReadStatus, str]:
     return "ok", ""
 
 
-def interpret_inbox(raw: dict, navigations_used: int = 0) -> InboxResult:
+def interpret_inbox(raw: dict, navigations_used: int = 0,
+                    extra_detail: str = "") -> InboxResult:
     status, detail = inbox_status(raw)
     return InboxResult(
         status=status,
         rows=interpret_rows(raw) if status == "ok" else (),
         navigations_used=navigations_used,
-        detail=detail,
+        detail=detail or extra_detail,
     )
 
 
@@ -401,7 +402,8 @@ def _outside_kind(text: str, laid: bool, width_ratio: float) -> tuple[str | None
 
 
 def interpret_read(
-    raw: dict, thread_id: str | None, navigations_used: int = 0
+    raw: dict, thread_id: str | None, navigations_used: int = 0,
+    extra_detail: str = "",
 ) -> ReadResult:
     status = page_status(raw.get("path", ""))
     if status:
@@ -531,5 +533,5 @@ def interpret_read(
         participant_links=links,
         composer_text=normalize(raw.get("composer_text") or ""),
         navigations_used=navigations_used,
-        detail="",
+        detail=extra_detail,
     )
