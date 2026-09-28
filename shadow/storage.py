@@ -205,10 +205,105 @@ CREATE TABLE owner_latency_profile (
 );
 """
 
-# Forward-only: each entry is (version, sql). Statements are applied inside
-# one BEGIN IMMEDIATE per version with `user_version` set in that same
-# transaction, so a crash mid-migration leaves the old version intact.
-MIGRATIONS: tuple[tuple[int, str], ...] = ((1, SCHEMA_V1),)
+# --- schema v2 (P03) ----------------------------------------------------
+# Additive, plus two table rebuilds. A CHECK constraint cannot be widened in
+# place in SQLite, so `conversation_work` and `decisions` are recreated and
+# copied; `decisions` needs the foreign-key-off path below because `outbox`
+# references it. The v1 SQL above is never edited: an old database is always
+# migrated forward, so v1 must keep describing v1.
+SCHEMA_V2 = """
+CREATE TABLE usage_counters (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL,
+    window_start TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (kind, window_start)
+);
+
+CREATE TABLE alerts (
+    id INTEGER PRIMARY KEY,
+    dedupe_key TEXT NOT NULL UNIQUE,
+    tier TEXT NOT NULL CHECK (tier IN ('urgent', 'action', 'info')),
+    reason TEXT NOT NULL,
+    conversation_id INTEGER REFERENCES conversations (id),
+    state TEXT NOT NULL DEFAULT 'pending'
+        CHECK (state IN ('pending', 'sent', 'acknowledged', 'resolved')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,
+    created_at TEXT NOT NULL,
+    digest_included INTEGER NOT NULL DEFAULT 0 CHECK (digest_included IN (0, 1))
+);
+
+CREATE INDEX alerts_by_state ON alerts (state, next_attempt_at);
+
+-- Columns P03 needs but v1 had no place for.
+ALTER TABLE conversations ADD COLUMN paused_reason TEXT;
+ALTER TABLE conversations ADD COLUMN first_seen_baseline_done INTEGER NOT NULL DEFAULT 0
+    CHECK (first_seen_baseline_done IN (0, 1));
+ALTER TABLE outbox ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE conversation_work_v2 (
+    conversation_id INTEGER PRIMARY KEY REFERENCES conversations (id),
+    inbound_revision INTEGER NOT NULL DEFAULT 0,
+    due_at TEXT,
+    first_pending_at TEXT,
+    state TEXT NOT NULL DEFAULT 'idle'
+        CHECK (state IN ('idle', 'pending', 'assessing', 'drafted', 'awaiting_approval',
+                         'due', 'sending', 'held', 'owner_active', 'blocked')),
+    cancel_generation INTEGER NOT NULL DEFAULT 0,
+    sampled_delay_seconds INTEGER,
+    last_inbound_at TEXT,
+    held_reason TEXT
+);
+
+INSERT INTO conversation_work_v2 (conversation_id, inbound_revision, due_at,
+        first_pending_at, state, cancel_generation, sampled_delay_seconds, last_inbound_at,
+        held_reason)
+    SELECT conversation_id, inbound_revision, due_at, first_pending_at,
+           CASE state WHEN 'blocked' THEN 'held' ELSE state END,
+           cancel_generation, NULL, NULL, NULL
+    FROM conversation_work;
+
+DROP TABLE conversation_work;
+ALTER TABLE conversation_work_v2 RENAME TO conversation_work;
+
+CREATE TABLE decisions_v2 (
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES conversations (id),
+    source_revision INTEGER NOT NULL,
+    record_json TEXT NOT NULL,
+    versions_json TEXT NOT NULL,
+    status TEXT NOT NULL
+        CHECK (status IN ('recorded', 'awaiting_approval', 'approved', 'rejected', 'expired',
+                          'superseded', 'queued', 'done')),
+    created_at TEXT NOT NULL
+);
+
+-- v1 statuses mapped forward, never dropped: 'pending' becomes 'recorded' (a
+-- stored decision nothing has acted on) and 'completed' becomes 'done'.
+INSERT INTO decisions_v2 (id, conversation_id, source_revision, record_json, versions_json,
+        status, created_at)
+    SELECT id, conversation_id, source_revision, record_json, versions_json,
+           CASE status WHEN 'pending' THEN 'recorded' WHEN 'completed' THEN 'done'
+                ELSE status END,
+           created_at
+    FROM decisions;
+
+DROP TABLE decisions;
+ALTER TABLE decisions_v2 RENAME TO decisions;
+"""
+
+# Forward-only: each entry is (version, sql) or (version, sql, needs_fk_off).
+# Statements are applied inside one BEGIN IMMEDIATE per version with
+# `user_version` set in that same transaction, so a crash mid-migration leaves
+# the old version intact.
+#
+# A rebuild of a table that another table references needs `PRAGMA foreign_keys`
+# OFF, and that pragma is a no-op inside a transaction, so it is switched around
+# the transaction rather than inside it. A rebuild that would break a reference
+# is caught by `PRAGMA foreign_key_check` before the COMMIT, so it still rolls
+# back whole.
+MIGRATIONS: tuple[tuple, ...] = ((1, SCHEMA_V1), (2, SCHEMA_V2, True))
 CURRENT_VERSION = MIGRATIONS[-1][0]
 
 
@@ -235,6 +330,23 @@ class InvalidTransition(StorageError):
 def utcnow() -> str:
     """UTC timestamp, the only format written for observed times."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def iso(when: datetime) -> str:
+    """Format an aware datetime the way utcnow() does. A naive datetime is
+    refused rather than assumed to be UTC: a clock that lost its timezone must
+    not silently become a valid timestamp."""
+    if when.tzinfo is None:
+        raise StorageError(f"{when!r} has no timezone; pass an aware datetime")
+    return when.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def parse_iso(value: str | None) -> datetime | None:
+    """Read a stored timestamp back. Returns None for a NULL column, so a
+    caller can treat "never" and "unknown" the same way instead of guessing."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value)
 
 
 def _statements(sql: str) -> list[str]:
@@ -342,31 +454,50 @@ def _verify_copy(source: sqlite3.Connection, dest: Path) -> None:
 
 
 def _migrate(conn: sqlite3.Connection, directory: Path, path: Path) -> None:
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
-    if version > CURRENT_VERSION:
+    current = conn.execute("PRAGMA user_version").fetchone()[0]
+    if current > CURRENT_VERSION:
         raise UnsupportedSchema(
-            f"{path}: schema version {version} is newer than this code knows "
+            f"{path}: schema version {current} is newer than this code knows "
             f"({CURRENT_VERSION}); upgrade Shadow before running it"
         )
-    for target, sql in MIGRATIONS:
-        if target <= version:
+    for entry in MIGRATIONS:
+        target, sql = entry[0], entry[1]
+        fk_off = len(entry) > 2 and bool(entry[2])
+        if target <= current:
             continue
         if _has_user_tables(conn):
             # A database that already holds data is backed up and the backup
-            # is verified before any migration statement runs.
+            # is verified before any migration statement runs. The name carries
+            # the version being migrated FROM, so one file per step: with more
+            # than one pending version the label must follow `current`, not the
+            # version read at open time.
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            dest = directory / BACKUP_DIR / f"pre-migration-v{version}-{stamp}.sqlite3"
+            dest = directory / BACKUP_DIR / f"pre-migration-v{current}-{stamp}.sqlite3"
             _copy_database(conn, dest)
             _verify_copy(conn, dest)
+        if fk_off:
+            conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("BEGIN IMMEDIATE")
         try:
             for statement in _statements(sql):
                 conn.execute(statement)
+            if fk_off:
+                broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+                if broken:
+                    raise StorageError(
+                        f"migration to v{target} would break {len(broken)} foreign "
+                        f"key reference(s); rolled back"
+                    )
             conn.execute(f"PRAGMA user_version = {int(target)}")
         except BaseException:
             conn.execute("ROLLBACK")
+            if fk_off:
+                conn.execute("PRAGMA foreign_keys = ON")
             raise
         conn.execute("COMMIT")
+        if fk_off:
+            conn.execute("PRAGMA foreign_keys = ON")
+        current = target
 
 
 def _has_user_tables(conn: sqlite3.Connection) -> bool:
@@ -493,6 +624,41 @@ class Storage:
                 (status, evidence, conversation_id),
             )
 
+    def get_conversation_by_thread(self, account_id: str, thread_id: str) -> dict | None:
+        """Look a conversation up by its exact platform thread id. The only
+        supported lookup by thread: never by label (rules 8)."""
+        row = self._conn.execute(
+            "SELECT * FROM conversations WHERE account_id = ? AND thread_id = ?",
+            (account_id, str(thread_id)),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def set_owner_active_until(self, conversation_id: int, until: str | None) -> None:
+        """Takeover window end, or None to clear it (`/resume`)."""
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE conversations SET owner_active_until = ? WHERE id = ?",
+                (until, conversation_id),
+            )
+
+    def set_paused_reason(self, conversation_id: int, reason: str | None) -> None:
+        """Per-conversation hold reason (manual_text, group, takeover, ...).
+        None clears it. This is local state, never a send decision."""
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE conversations SET paused_reason = ? WHERE id = ?",
+                (reason, conversation_id),
+            )
+
+    def mark_baseline_done(self, conversation_id: int, done: bool = True) -> None:
+        """The first read of a thread is history, not new work (D40). Once
+        recorded, later reads are alignments against that history."""
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE conversations SET first_seen_baseline_done = ? WHERE id = ?",
+                (1 if done else 0, conversation_id),
+            )
+
     def get_work(self, conversation_id: int) -> dict | None:
         row = self._conn.execute(
             "SELECT * FROM conversation_work WHERE conversation_id = ?", (conversation_id,)
@@ -520,6 +686,64 @@ class Storage:
                 (conversation_id, inbound_revision, due_at, first_pending_at, state,
                  cancel_generation),
             )
+
+    # Columns `update_work` may change. An explicit list, so a caller cannot
+    # invent a column or quietly rewrite the conversation id.
+    _WORK_UPDATABLE = frozenset(
+        {
+            "inbound_revision",
+            "due_at",
+            "first_pending_at",
+            "state",
+            "cancel_generation",
+            "sampled_delay_seconds",
+            "last_inbound_at",
+            "held_reason",
+        }
+    )
+
+    def update_work(self, conversation_id: int, **fields) -> None:
+        """Change only the named work columns.
+
+        `set_work` replaces the whole row and needs a revision; this is for the
+        coordinator moving one thread's state without touching anything else.
+        Raises before writing if a name is not updatable.
+        """
+        unknown = sorted(set(fields) - self._WORK_UPDATABLE)
+        if unknown:
+            raise StorageError(
+                f"update_work: not updatable: {', '.join(unknown)}; "
+                f"allowed: {', '.join(sorted(self._WORK_UPDATABLE))}"
+            )
+        if not fields:
+            return
+        assignments = ", ".join(f"{name} = ?" for name in fields)
+        values = list(fields.values()) + [conversation_id]
+        with self.transaction() as conn:
+            if conn.execute(
+                "SELECT 1 FROM conversation_work WHERE conversation_id = ?", (conversation_id,)
+            ).fetchone() is None:
+                raise StorageError(
+                    f"conversation {conversation_id} has no work row; create it "
+                    f"with set_work() before updating it"
+                )
+            conn.execute(
+                f"UPDATE conversation_work SET {assignments} WHERE conversation_id = ?", values
+            )
+
+    def work_in_states(self, states) -> list[dict]:
+        names = tuple(states)
+        if not names:
+            return []
+        marks = ", ".join("?" for _ in names)
+        rows = self._conn.execute(
+            f"SELECT w.*, c.account_id, c.thread_id, c.contact_status, c.label, "
+            f"c.paused_reason, c.owner_active_until, c.first_seen_baseline_done "
+            f"FROM conversation_work w JOIN conversations c ON c.id = w.conversation_id "
+            f"WHERE w.state IN ({marks}) ORDER BY w.conversation_id",
+            names,
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     # --- legacy contacts and explicit binding -----------------------
     def add_legacy_contact(
@@ -664,7 +888,7 @@ class Storage:
         source_revision: int,
         record_json: str,
         versions_json: str,
-        status: str = "pending",
+        status: str = "recorded",
     ) -> int:
         with self.transaction() as conn:
             cursor = conn.execute(
@@ -733,10 +957,59 @@ class Storage:
                 )
             conn.execute(
                 "UPDATE outbox SET state = ?, evidence = COALESCE(?, evidence), "
-                "attempted_at = CASE WHEN ? = 'attempting' THEN ? ELSE attempted_at END "
+                "attempted_at = CASE WHEN ? = 'attempting' THEN ? ELSE attempted_at END, "
+                "attempts = CASE WHEN ? = 'attempting' THEN attempts + 1 ELSE attempts END "
                 "WHERE id = ?",
-                (to_state, evidence, to_state, utcnow(), item_id),
+                (to_state, evidence, to_state, utcnow(), to_state, item_id),
             )
+
+    def set_decision_status(self, decision_id: int, status: str) -> None:
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE decisions SET status = ? WHERE id = ?", (status, decision_id)
+            )
+
+    def decisions_for(self, conversation_id: int) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM decisions WHERE conversation_id = ? ORDER BY id",
+            (conversation_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def cancel_decisions(self, conversation_id: int, statuses) -> int:
+        """Mark a thread's outstanding decisions superseded. Only the given
+        statuses are touched, so a confirmed decision keeps its outcome."""
+        names = tuple(statuses)
+        if not names:
+            return 0
+        marks = ", ".join("?" for _ in names)
+        with self.transaction() as conn:
+            cursor = conn.execute(
+                f"UPDATE decisions SET status = 'superseded' "
+                f"WHERE conversation_id = ? AND status IN ({marks})",
+                (conversation_id, *names),
+            )
+            return cursor.rowcount
+
+    def cancel_outbox_items(
+        self, conversation_id: int, reason: str, states=("pending",)
+    ) -> int:
+        """Cancel the items of one thread that have not been attempted.
+
+        States that cannot reach `cancelled` are filtered out rather than
+        forced, so a confirmed or uncertain item is never rewritten here.
+        """
+        names = tuple(s for s in states if "cancelled" in ALLOWED.get(s, ()))
+        if not names:
+            return 0
+        marks = ", ".join("?" for _ in names)
+        with self.transaction() as conn:
+            cursor = conn.execute(
+                f"UPDATE outbox SET state = 'cancelled', evidence = COALESCE(?, evidence) "
+                f"WHERE conversation_id = ? AND state IN ({marks})",
+                (reason, conversation_id, *names),
+            )
+            return cursor.rowcount
 
     def _mark_confirmed(self, conn: sqlite3.Connection, item_id: int, event_id: int) -> None:
         conn.execute(
@@ -858,6 +1131,148 @@ class Storage:
             "SELECT * FROM owner_latency_profile ORDER BY bucket"
         ).fetchall()
         return {row["bucket"]: dict(row) for row in rows}
+
+    # --- usage counters and alerts ----------------------------------
+    def _window_start(self, window_seconds: int, now: datetime | None = None) -> str:
+        """Start of the fixed window `now` falls in.
+
+        A fixed window, not a rolling one: both the cap and the reset are then
+        predictable, and a restart cannot reset a budget by moving the clock.
+        """
+        if window_seconds <= 0:
+            raise StorageError(f"usage window must be positive, got {window_seconds}")
+        moment = now or datetime.now(timezone.utc)
+        if moment.tzinfo is None:
+            raise StorageError(f"{moment!r} has no timezone; pass an aware datetime")
+        epoch = int(moment.timestamp())
+        return iso(datetime.fromtimestamp(epoch - epoch % window_seconds, timezone.utc))
+
+    def try_consume(self, kind: str, limit: int, window_seconds: int, now=None) -> bool:
+        """Take one unit from a `(count, window)` budget, atomically.
+
+        True when the unit was taken. False when the window is already at the
+        limit, and nothing is written in that case. The check and the increment
+        share one IMMEDIATE transaction, so two callers cannot both see the last
+        unit. This is how a cap refuses a send instead of a later sweep noticing.
+        """
+        start = self._window_start(window_seconds, now)
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT count FROM usage_counters WHERE kind = ? AND window_start = ?",
+                (kind, start),
+            ).fetchone()
+            # A limit of 0 refuses every use, including on an empty window, so
+            # the count is compared rather than the row's existence.
+            if (0 if row is None else row["count"]) >= limit:
+                return False
+            self._bump(conn, kind, start)
+            return True
+
+    def try_consume_rates(self, kind: str, rates, now=None) -> bool:
+        """Take one unit from every window in `rates`, or from none.
+
+        A cap is a tuple of windows (an hourly and a daily rate). Every window
+        is checked first and consumed afterwards, so exhausting the daily rate
+        does not burn the hourly one.
+        """
+        checked = []
+        with self.transaction() as conn:
+            for count, window_seconds in rates:
+                start = self._window_start(window_seconds, now)
+                row = conn.execute(
+                    "SELECT count FROM usage_counters WHERE kind = ? AND window_start = ?",
+                    (kind, start),
+                ).fetchone()
+                if (0 if row is None else row["count"]) >= count:
+                    return False
+                checked.append(start)
+            for start in checked:
+                self._bump(conn, kind, start)
+            return True
+
+    @staticmethod
+    def _bump(conn: sqlite3.Connection, kind: str, start: str) -> None:
+        conn.execute(
+            "INSERT INTO usage_counters (kind, window_start, count) VALUES (?, ?, 1) "
+            "ON CONFLICT (kind, window_start) DO UPDATE SET count = count + 1",
+            (kind, start),
+        )
+
+    def usage_count(self, kind: str, window_seconds: int, now=None) -> int:
+        start = self._window_start(window_seconds, now)
+        row = self._conn.execute(
+            "SELECT count FROM usage_counters WHERE kind = ? AND window_start = ?",
+            (kind, start),
+        ).fetchone()
+        return 0 if row is None else row["count"]
+
+    def usage_counters(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM usage_counters ORDER BY kind, window_start"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def raise_alert(
+        self,
+        *,
+        dedupe_key: str,
+        tier: str,
+        reason: str,
+        conversation_id: int | None = None,
+    ) -> int:
+        """Record an alert once per `dedupe_key`. Idempotent: the same key
+        returns the existing row and does not reset its state, so a repeat
+        condition raises one alert, not one per tick. Delivery is P04's job;
+        this only records what must be delivered."""
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT id FROM alerts WHERE dedupe_key = ?", (dedupe_key,)
+            ).fetchone()
+            if row is not None:
+                return row["id"]
+            cursor = conn.execute(
+                "INSERT INTO alerts (dedupe_key, tier, reason, conversation_id, state, "
+                "attempts, created_at, digest_included) VALUES (?, ?, ?, ?, 'pending', 0, ?, 0)",
+                (dedupe_key, tier, reason, conversation_id, utcnow()),
+            )
+            return cursor.lastrowid
+
+    def alerts(
+        self, *, state: str | None = None, conversation_id: int | None = None
+    ) -> list[dict]:
+        clauses, values = [], []
+        if state is not None:
+            clauses.append("state = ?")
+            values.append(state)
+        if conversation_id is not None:
+            clauses.append("conversation_id = ?")
+            values.append(conversation_id)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        rows = self._conn.execute(
+            f"SELECT * FROM alerts{where} ORDER BY id", values
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def set_alert_state(
+        self,
+        alert_id: int,
+        state: str,
+        *,
+        attempts: int | None = None,
+        next_attempt_at: str | None = None,
+    ) -> None:
+        with self.transaction() as conn:
+            if attempts is None:
+                conn.execute(
+                    "UPDATE alerts SET state = ?, next_attempt_at = ? WHERE id = ?",
+                    (state, next_attempt_at, alert_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE alerts SET state = ?, attempts = ?, next_attempt_at = ? "
+                    "WHERE id = ?",
+                    (state, attempts, next_attempt_at, alert_id),
+                )
 
     # --- backup -----------------------------------------------------
     def table_counts(self) -> dict[str, int]:

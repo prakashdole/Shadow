@@ -197,12 +197,12 @@ class TestTransactionAtomicityS04(StorageCase):
             with self.storage.transaction() as conn:
                 conn.execute(
                     "INSERT INTO decisions (conversation_id, source_revision, record_json, "
-                    "versions_json, status, created_at) VALUES (?, 1, '{}', '{}', 'pending', 'x')",
+                    "versions_json, status, created_at) VALUES (?, 1, '{}', '{}', 'recorded', 'x')",
                     (conversation,),
                 )
                 conn.execute(
                     "INSERT INTO decisions (conversation_id, source_revision, record_json, "
-                    "versions_json, status, created_at) VALUES (?, 1, '{}', '{}', 'pending', 'y')",
+                    "versions_json, status, created_at) VALUES (?, 1, '{}', '{}', 'recorded', 'y')",
                     (conversation,),
                 )
                 raise RuntimeError("boom")
@@ -217,7 +217,7 @@ class TestTransactionAtomicityS04(StorageCase):
             "conn.execute('BEGIN IMMEDIATE')\n"
             "conn.execute(\"INSERT INTO decisions (conversation_id, source_revision, "
             f"record_json, versions_json, status, created_at) VALUES ({conversation}, 7, "
-            "'{}', '{}', 'pending', 'x')\")\n"
+            "'{}', '{}', 'recorded', 'x')\")\n"
             "os._exit(1)\n"
         )
         self.addCleanup(_kill, child)
@@ -401,9 +401,11 @@ class TestFailureContainmentS05(StorageCase):
         page_count = self.storage.conn.execute("PRAGMA page_count").fetchone()[0]
         self.storage.conn.execute(f"PRAGMA max_page_count = {page_count}")
         with self.assertRaises(sqlite3.OperationalError):
+            # Larger than any free page the file happens to be holding, so the
+            # write must allocate and cannot pass on slack in the freelist.
             self.storage.add_event(
                 conversation_id=conversation, sender="contact", kind="text",
-                text="x" * 4000, source="dom", origin="unknown", seq=1,
+                text="x" * 40000, source="dom", origin="unknown", seq=1,
             )
         self.storage.conn.execute("PRAGMA max_page_count = 1073741823")
         self.assertEqual(self.storage.get_events(conversation), [])
