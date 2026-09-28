@@ -153,8 +153,8 @@ class TestIdentityS02S03(StorageCase):
         self.assertNotEqual(first, second)
 
     def test_imported_folder_is_never_bound_automatically(self) -> None:
-        conversation = self.conversation("321", "Aditya_shirke_7")
-        legacy = self.storage.add_legacy_contact("Aditya_shirke_7", 7, "friend")
+        conversation = self.conversation("321", "Name_with_digits_7")
+        legacy = self.storage.add_legacy_contact("Name_with_digits_7", 7, "friend")
         self.storage.add_event(
             legacy_contact_id=legacy, sender="contact", kind="text", text="hi",
             source="import", origin="unknown", seq=1,
