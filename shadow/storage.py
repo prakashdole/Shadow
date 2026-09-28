@@ -963,6 +963,18 @@ class Storage:
                 (to_state, evidence, to_state, utcnow(), to_state, item_id),
             )
 
+    def set_outbox_evidence(self, item_id: int, evidence: str) -> None:
+        """Attach browser evidence to an item after it was confirmed.
+
+        Separate from confirm_send on purpose: the state change and the sent
+        event are the atomic pair, and this is a diagnostic written after them.
+        """
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE outbox SET evidence = COALESCE(evidence, ?) WHERE id = ?",
+                (evidence, item_id),
+            )
+
     def set_decision_status(self, decision_id: int, status: str) -> None:
         with self.transaction() as conn:
             conn.execute(
@@ -1189,6 +1201,23 @@ class Storage:
             for start in checked:
                 self._bump(conn, kind, start)
             return True
+
+    def rates_available(self, kind: str, rates, now=None) -> bool:
+        """Whether every window in `rates` would allow one more. Consumes
+        nothing.
+
+        This is what a pre-send check needs: the worker calls its check before
+        typing, before Enter and between items, and consuming a cap unit on each
+        of those would charge one message three times.
+        """
+        for count, window_seconds in rates:
+            row = self._conn.execute(
+                "SELECT count FROM usage_counters WHERE kind = ? AND window_start = ?",
+                (kind, self._window_start(window_seconds, now)),
+            ).fetchone()
+            if (0 if row is None else row["count"]) >= count:
+                return False
+        return True
 
     @staticmethod
     def _bump(conn: sqlite3.Connection, kind: str, start: str) -> None:

@@ -271,6 +271,14 @@ def apply_active_hours(
     return start + timedelta(seconds=delay), True
 
 
+def local_hour(now: datetime, settings: Settings) -> int:
+    """The owner's local hour, for looking up a latency bucket. Falls back to the
+    UTC hour when no zone is configured, which is only reachable in observe."""
+    if settings.timezone:
+        return now.astimezone(_zone(settings)).hour
+    return now.hour
+
+
 def poll_interval(now: datetime, settings: Settings) -> int:
     """Seconds until the next inbox poll: `quiet_poll_interval` outside active
     hours, `inbox_check_interval` inside. Urgent detection is the only reason to

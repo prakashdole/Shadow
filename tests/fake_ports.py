@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import timezone
 
 from shadow import contracts as C
 from shadow.pacing import ManualClock
