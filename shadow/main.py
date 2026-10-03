@@ -137,6 +137,9 @@ def observe_command(once: bool, with_model: bool, with_telegram: bool) -> None:
                     "owner_user_id": int(os.environ.get("SHADOW_TELEGRAM_USER_ID", "")),
                     "owner_chat_id": int(os.environ.get("SHADOW_TELEGRAM_CHAT_ID", "")),
                 }
+                secondary = os.environ.get("SHADOW_TELEGRAM_SECONDARY_CHAT_ID", "").strip()
+                if secondary:
+                    owner_ids["secondary_chat_id"] = int(secondary)
             decisions = None
             if with_model:
                 from shadow.decisions import StructuredDecisions

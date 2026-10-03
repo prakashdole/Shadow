@@ -67,7 +67,7 @@ class OwnerCommands:
     def _execute(self, command: str, arg: str) -> str:
         if command == "/help":
             return ("/status /pause /resume /mode observe /approve <thread-id> "
-                    "/ignore <thread-id> /alerts /digest. Sending and autonomous mode are locked.")
+                    "/ignore <thread-id> /alerts /ack <alert-id> /digest. Sending and autonomous mode are locked.")
         if command == "/status":
             runtime = self.storage.get_runtime() or {}
             pending = len(self.storage.work_in_states(("pending", "due", "awaiting_approval")))
@@ -115,9 +115,19 @@ class OwnerCommands:
             for alert in self.storage.alerts(state="pending"):
                 counts[alert["tier"]] += 1
             return "Pending alerts: " + ", ".join(f"{tier}={count}" for tier, count in counts.items())
+        if command == "/ack":
+            if not _THREAD.fullmatch(arg):
+                return "Supply an exact alert ID; no hold cleared."
+            alert = next((item for item in self.storage.alerts() if item["id"] == int(arg)), None)
+            if not alert or alert["state"] == "resolved":
+                return "No unresolved alert with that ID; no hold cleared."
+            self.storage.set_alert_state(alert["id"], "acknowledged")
+            return f"Alert #{arg} acknowledged; the underlying hold remains."
         if command == "/digest":
-            sent = sum(item["state"] == "confirmed" for item in self.storage.outbox_items())
-            return f"Confirmed sends (all time)={sent}; " + self._execute("/alerts", "")
+            from shadow.notifications import digest_text
+
+            return digest_text(self.storage, now=self.coordinator.clock.now(),
+                               settings=self.coordinator.settings)
         return "Unsupported command. /help lists installed controls; no Instagram send performed."
 
 
@@ -153,7 +163,8 @@ class TelegramTransport:
             if outcome is not None:
                 count += 1
         for response in handler.storage.pending_owner_responses():
-            self._post("sendMessage", chat_id=handler.chat_id, text=response["outcome"])
+            for page in message_pages(response["outcome"]):
+                self._post("sendMessage", chat_id=handler.chat_id, text=page)
             handler.storage.mark_owner_response_delivered(response["update_id"])
         return count
 
@@ -169,7 +180,21 @@ class TelegramTransport:
             raise RuntimeError("Telegram returned invalid updates")
         count = sum(handler.process(update) is not None for update in updates)
         for response in handler.storage.pending_owner_responses():
-            await asyncio.to_thread(self._post, "sendMessage", chat_id=handler.chat_id,
-                                    text=response["outcome"])
+            for page in message_pages(response["outcome"]):
+                await asyncio.to_thread(self._post, "sendMessage", chat_id=handler.chat_id, text=page)
             handler.storage.mark_owner_response_delivered(response["update_id"])
         return count
+
+
+def message_pages(text: str):
+    """Conservative UTF-16 ceiling for Telegram, without truncating sent text."""
+    page, units = [], 0
+    for char in text:
+        size = 2 if ord(char) > 0xFFFF else 1
+        if units + size > 4000:
+            yield "".join(page)
+            page, units = [], 0
+        page.append(char)
+        units += size
+    if page:
+        yield "".join(page)

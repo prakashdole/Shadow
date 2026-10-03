@@ -30,7 +30,8 @@ async def observe_once(
 
 async def observe_loop(storage: Storage, browser, settings: Settings, account_id: str,
                        decisions=None, *, once: bool = False, owner_transport=None,
-                       owner_user_id: int | None = None, owner_chat_id: int | None = None) -> TickReport:
+                       owner_user_id: int | None = None, owner_chat_id: int | None = None,
+                       secondary_chat_id: int | None = None) -> TickReport:
     """Keep a dedicated browser bound for read-only observation.
 
     One sequential worker owns the store and browser. A global pause exits so
@@ -45,6 +46,7 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
                               settings, account_id=account_id)
     await coordinator.startup()
     owner_task = None
+    alert_task = None
     if owner_transport is not None:
         from shadow.owner import OwnerCommands
 
@@ -60,6 +62,17 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
                     await asyncio.sleep(settings.inbox_check_interval)
 
         owner_task = asyncio.create_task(poll_owner())
+        from shadow.notifications import Notifications
+
+        notifications = Notifications(storage, owner_transport, settings, chat_id=owner_chat_id,
+                                      secondary_chat_id=secondary_chat_id)
+
+        async def deliver_alerts():
+            while True:
+                await notifications.deliver_due()
+                await asyncio.sleep(max(1, settings.pane_check_interval))
+
+        alert_task = asyncio.create_task(deliver_alerts())
     try:
         initial = await browser.start()
         if initial.status in GLOBAL_PAUSE_STATUSES:
@@ -74,7 +87,8 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
                 return report
             await asyncio.sleep(settings.inbox_check_interval)
     finally:
-        if owner_task is not None:
-            owner_task.cancel()
-            await asyncio.gather(owner_task, return_exceptions=True)
+        tasks = [task for task in (owner_task, alert_task) if task is not None]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         await browser.close()

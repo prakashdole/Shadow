@@ -313,7 +313,15 @@ CREATE TABLE owner_updates (
 );
 """
 
-MIGRATIONS: tuple[tuple, ...] = ((1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3))
+SCHEMA_V4 = """
+ALTER TABLE alerts ADD COLUMN sent_at TEXT;
+ALTER TABLE alerts ADD COLUMN repeat_index INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE alerts ADD COLUMN escalated_at TEXT;
+"""
+
+MIGRATIONS: tuple[tuple, ...] = (
+    (1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3), (4, SCHEMA_V4),
+)
 CURRENT_VERSION = MIGRATIONS[-1][0]
 
 
@@ -1315,6 +1323,15 @@ class Storage:
             "WHERE delivered = 0 AND command != 'ignored' ORDER BY update_id"
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def update_alert_delivery(self, alert_id: int, **fields) -> None:
+        allowed = {"state", "attempts", "next_attempt_at", "sent_at", "repeat_index",
+                   "escalated_at", "digest_included"}
+        if not fields or not set(fields) <= allowed:
+            raise StorageError("invalid alert delivery fields")
+        with self.transaction() as conn:
+            conn.execute("UPDATE alerts SET " + ", ".join(f"{key} = ?" for key in fields)
+                         + " WHERE id = ?", (*fields.values(), alert_id))
 
     def mark_owner_response_delivered(self, update_id: int) -> None:
         with self.transaction() as conn:
