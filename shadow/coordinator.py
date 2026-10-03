@@ -39,7 +39,7 @@ import hashlib
 import json
 import random
 import tempfile
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -572,7 +572,7 @@ class Coordinator:
                 continue
             await self._takeover(conversation_id, report)
         if contact_events:
-            await self._queue_work(conversation_id, contact_events, report)
+            await self._queue_work(conversation_id, events, report)
 
     async def _takeover(self, conversation_id: int, report: TickReport) -> None:
         """An owner message we did not send. Pending work for that thread is
@@ -603,12 +603,13 @@ class Coordinator:
         now = self.clock.now()
         work = self.storage.get_work(conversation_id)
         revision = 0 if work is None else int(work["inbound_revision"]) + 1
-        first_pending = now if work is None or not work["first_pending_at"] else ST.parse_iso(
+        continuing = work is not None and work["state"] in ("pending", "assessing", "drafted", "awaiting_approval", "due")
+        first_pending = now if not continuing or not work["first_pending_at"] else ST.parse_iso(
             work["first_pending_at"]
         )
         last_inbound = now
         momentum = self._momentum(conversation_id, now)
-        delay = pacing.sample_delay(
+        delay = work["sampled_delay_seconds"] if continuing and work["sampled_delay_seconds"] is not None else pacing.sample_delay(
             self.settings,
             momentum=momentum,
             profile=self.storage.latency_profile() or None,
@@ -648,7 +649,7 @@ class Coordinator:
                 conversation_id,
                 inbound_revision=revision,
                 due_at=ST.iso(due),
-                first_pending_at=work["first_pending_at"] or ST.iso(first_pending or now),
+                first_pending_at=ST.iso(first_pending or now),
                 state="pending",
                 last_inbound_at=ST.iso(last_inbound),
                 sampled_delay_seconds=int(delay),
@@ -658,12 +659,15 @@ class Coordinator:
                                    and work.get("first_pending_seq") is not None
                                    else self._new_batch_first_seq(conversation_id, len(events))),
             )
-        self.storage.set_paused_reason(conversation_id, None)
+        if conversation["paused_reason"] != "owner_pause":
+            self.storage.set_paused_reason(conversation_id, None)
         report.note(f"conversation {conversation_id}: work queued (revision {revision})")
 
     def _new_batch_first_seq(self, conversation_id, count):
         events = self.storage.get_events(conversation_id)
-        return events[max(0, len(events) - count)]["seq"] if events else 0
+        new_contacts = [event for event in events[max(0, len(events) - count):]
+                        if event["sender"] == "contact"]
+        return new_contacts[0]["seq"] if new_contacts else 0
 
     def _momentum(self, conversation_id: int, now: datetime) -> bool:
         last = None
@@ -730,6 +734,7 @@ class Coordinator:
         self._record_quality_signal(conversation_id, work, assessment.signals)
         self._start_extraction(data)
         assessment_record = {
+            "memory_revision": data.memory_revision,
             "assessment": {
                 "risk": assessment.risk,
                 "reason_code": assessment.reason_code,
@@ -761,6 +766,11 @@ class Coordinator:
             self.storage.update_work(
                 conversation_id, state="held", held_reason=f"risk_{assessment.reason_code}"
             )
+            return
+        conversation = self.storage.get_conversation(conversation_id)
+        if conversation["paused_reason"] or self._owner_active(conversation):
+            self._hold(conversation_id, "owner_active" if self._owner_active(conversation)
+                       else conversation["paused_reason"], report, tier=None)
             return
         drafted = await self._call(
             self.decisions.draft(data, assessment), conversation_id, "draft"
@@ -805,12 +815,6 @@ class Coordinator:
         report.drafted += 1
         self._queue_draft(conversation_id, work, decision_id, reply.messages, report)
 
-    def _batch_size(self) -> int:
-        # The current batch is what the contact said since Shadow last spoke.
-        # Bounded by the burst ceiling, which is also the largest number of
-        # messages one decision may cover.
-        return self.settings.burst_max_items
-
     def _response_current(self, conversation_id: int, started: dict,
                           started_mode: str, report: TickReport, memory_revision=None) -> bool:
         current = self.storage.get_work(conversation_id)
@@ -849,7 +853,13 @@ class Coordinator:
 
         task = asyncio.create_task(extract())
         self._extraction_tasks.add(task)
-        task.add_done_callback(self._extraction_tasks.discard)
+        def finished(task):
+            self._extraction_tasks.discard(task)
+            if not task.cancelled() and task.exception() is not None and self.storage.conn is not None:
+                self.storage.raise_alert(dedupe_key=f"extraction_failed:{data.conversation_id}",
+                                         tier="action", reason="extraction_failed",
+                                         conversation_id=data.conversation_id)
+        task.add_done_callback(finished)
 
     def _record_quality_signal(self, cid, work, signals):
         from shadow.quality import record_signals
@@ -869,7 +879,10 @@ class Coordinator:
             conversation_id=conversation_id,
             source_revision=int(work["inbound_revision"]),
             record_json=json.dumps(record, sort_keys=True),
-            versions_json=json.dumps(versions or {}, sort_keys=True),
+            versions_json=json.dumps((versions or {}) | {
+                "settings_digest": self._settings_digest(),
+                "config_digest": (self.storage.get_runtime() or {}).get("config_digest"),
+            }, sort_keys=True),
             status=status,
         )
 
@@ -918,6 +931,7 @@ class Coordinator:
                 text=message,
                 authority="autonomous",
                 revision=int(work["inbound_revision"]),
+                config_digest=(self.storage.get_runtime() or {}).get("config_digest"),
             )
         self.storage.set_decision_status(decision_id, "queued")
         self.storage.update_work(conversation_id, state="due", held_reason=None)
@@ -992,17 +1006,49 @@ class Coordinator:
             )
             return
 
+        if not await self._fresh_for_send(conversation_id, report):
+            return
+
+        items = [item for item in self.storage.outbox_items(conversation_id) if item["state"] == "pending"]
+        if not items:
+            self.storage.update_work(conversation_id, state="idle", held_reason=None)
+            return
+        self.storage.update_work(conversation_id, state="sending")
+        send_report = await OB.send_items(
+            self.storage, self.browser, conversation, items,
+            self._check_for(conversation_id, items), self.clock,
+        )
+        report.sent += len(send_report.confirmed)
+        if send_report.stopped_reason:
+            report.stopped_reason = send_report.stopped_reason
+            current = self.storage.get_work(conversation_id)
+            if current["state"] == "sending":
+                self.storage.update_work(conversation_id, state="held", held_reason="burst_stopped")
+        elif not send_report.uncertain and not send_report.failed:
+            self.storage.update_work(conversation_id, state="idle", held_reason=None)
+            for decision in self.storage.decisions_for(conversation_id):
+                if decision["status"] == "queued":
+                    self.storage.set_decision_status(decision["id"], "done")
+
+    async def _fresh_for_send(self, conversation_id, report, *, allow_composer=False):
+        conversation = self.storage.get_conversation(conversation_id)
         result = await self.browser.read_thread(conversation["thread_id"])
         if result.status in GLOBAL_PAUSE_STATUSES:
             self._global_pause(result.status)
             report.stopped_reason = result.status
-            return
+            return False
         if result.status != "ok":
             report.note(f"due re-read returned {result.status}")
             self.storage.update_work(
                 conversation_id, state="held", held_reason=f"reread_{result.status}"
             )
-            return
+            return False
+        if str(result.thread_id) != str(conversation["thread_id"]):
+            self._hold(conversation_id, "wrong_thread", report, tier="action")
+            return False
+        if result.is_group is not False:
+            self._hold(conversation_id, "group" if result.is_group else "group_uncertain", report, tier="action")
+            return False
         stored = self.storage.get_events(conversation_id)
         result_align = A.align(A.keys_of(stored[-ALIGN_TAIL_EVENTS:]), A.keys_of(result.events))
         if result_align.status == "ok" and result_align.new_start_index < len(result.events):
@@ -1014,42 +1060,16 @@ class Coordinator:
             self.storage.cancel_decisions(
                 conversation_id, ("recorded", "awaiting_approval", "approved", "queued")
             )
-            owner_new = [e for e in new_events if e.sender == "owner"]
-            if owner_new:
-                await self._takeover(conversation_id, report)
-            else:
-                self.storage.update_work(
-                    conversation_id, state="pending", held_reason="new_inbound"
-                )
+            await self._after_new_events(conversation_id, new_events, report)
             report.note(f"conversation {conversation_id}: reassessed after new inbound")
-            return
+            return False
         if result_align.status != "ok":
             self._hold(conversation_id, f"align_{result_align.status}", report, tier="action")
-            return
-        if result.composer_text:
+            return False
+        if result.composer_text and not allow_composer:
             self._hold(conversation_id, "manual_text", report, tier="info")
-            return
-
-        items = [
-            item for item in self.storage.outbox_items(conversation_id)
-            if item["state"] == "pending"
-        ]
-        if not items:
-            self.storage.update_work(conversation_id, state="idle", held_reason=None)
-            return
-        self.storage.update_work(conversation_id, state="sending")
-        send_report = await OB.send_items(
-            self.storage, self.browser, conversation, items,
-            self._check_for(conversation_id), self.clock,
-        )
-        report.sent += len(send_report.confirmed)
-        if send_report.stopped_reason:
-            report.stopped_reason = send_report.stopped_reason
-        if not send_report.uncertain and not send_report.failed:
-            self.storage.update_work(conversation_id, state="idle", held_reason=None)
-            for decision in self.storage.decisions_for(conversation_id):
-                if decision["status"] in ("queued",):
-                    self.storage.set_decision_status(decision["id"], "done")
+            return False
+        return True
 
     def _pause_reason(self) -> str:
         runtime = self.storage.get_runtime() or {}
@@ -1090,25 +1110,63 @@ class Coordinator:
             f"send_thread:{conversation_id}", self.settings.send_cap_thread, now
         )
 
-    def _check_for(self, conversation_id: int):
+    def _settings_digest(self):
+        return hashlib.sha256(json.dumps(asdict(self.settings), sort_keys=True).encode()).hexdigest()
+
+    def _check_for(self, conversation_id: int, items=()):
         """The check the outbox worker awaits before typing, before Enter and
         between items. Everything that can change while a burst is running is
         re-read here, at the last possible moment."""
         generation = self._generation(conversation_id)
+        revision = (self.storage.get_work(conversation_id) or {}).get("inbound_revision")
+        mode = self.mode
+        config_digest = (self.storage.get_runtime() or {}).get("config_digest")
+        settings_digest = self._settings_digest()
 
         async def check(point: str) -> bool:
             if self.paused:
                 return False
-            if self.mode == "observe":
+            if self.mode == "observe" or self.mode != mode:
                 return False
             if not self.pacing_allows_send():
                 return False
             if self._generation(conversation_id) != generation:
                 return False
+            if ((self.storage.get_work(conversation_id) or {}).get("inbound_revision") != revision
+                    or (self.storage.get_runtime() or {}).get("config_digest") != config_digest
+                    or self._settings_digest() != settings_digest):
+                return False
             conversation = self.storage.get_conversation(conversation_id)
-            if conversation is None or conversation["contact_status"] == "excluded":
+            if (conversation is None or conversation["account_id"] != self.account_id
+                    or conversation["contact_status"] not in ("known", "approved_unknown")
+                    or conversation["paused_reason"]):
                 return False
             if self._owner_active(conversation):
+                return False
+            for item in items:
+                current = self.storage.get_outbox_item(item["id"])
+                if (not current or current["state"] not in ("pending", "attempting", "confirmed")
+                        or current["revision"] != revision or current["config_digest"] != config_digest
+                        or current["authority"] == "autonomous" and
+                        (self.mode != "autonomous" or not self.in_autonomy_scope(conversation))):
+                    return False
+                decision = self.storage.conn.execute("SELECT versions_json FROM decisions WHERE id = ?",
+                                                     (current["decision_id"],)).fetchone()
+                versions = json.loads(decision[0])
+                if (versions.get("settings_digest", settings_digest) != settings_digest
+                        or versions.get("config_digest", config_digest) != config_digest):
+                    return False
+            if items and not await self._fresh_for_send(conversation_id, TickReport(),
+                                                       allow_composer=point == "before_enter"):
+                return False
+            # A Telegram pause or memory change can land while the browser read
+            # is awaiting I/O; validate again before reserving the Enter attempt.
+            current = self.storage.get_conversation(conversation_id)
+            if (self.paused or self.mode != mode or self._generation(conversation_id) != generation
+                    or (self.storage.get_work(conversation_id) or {}).get("inbound_revision") != revision
+                    or current["paused_reason"] or self._owner_active(current)
+                    or self._settings_digest() != settings_digest
+                    or (self.storage.get_runtime() or {}).get("config_digest") != config_digest):
                 return False
             return (self.caps_allow(conversation_id) if point == "before_enter"
                     else self.caps_available(conversation_id))
@@ -1182,7 +1240,7 @@ class Coordinator:
     def enqueue_owner_send(self, conversation_id: int, text: str) -> tuple[int, int]:
         return OB.enqueue_owner_send(
             self.storage, conversation_id, text, now=self.clock.now(),
-            revision=self._generation(conversation_id),
+            revision=(self.storage.get_work(conversation_id) or {}).get("inbound_revision", 0),
         )
 
     def _alert_id(self, dedupe_key: str) -> int:

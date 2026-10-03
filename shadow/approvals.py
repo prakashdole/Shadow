@@ -23,6 +23,10 @@ class Approvals:
                                     (decision_id,)).fetchone()
             if not decision:
                 raise ValueError("Decision is not awaiting approval")
+            existing = conn.execute("SELECT id FROM approval_requests WHERE decision_id = ?",
+                                    (decision_id,)).fetchone()
+            if existing:
+                return existing[0]
             conn.execute("UPDATE approval_requests SET state = 'superseded' "
                          "WHERE conversation_id = ? AND state IN ('pending','editing')",
                          (decision["conversation_id"],))
@@ -72,6 +76,7 @@ class Approvals:
             if (self.coordinator.paused or not conversation
                     or conversation["account_id"] != self.coordinator.account_id
                     or conversation["contact_status"] not in ("known", "approved_unknown")
+                    or conversation["paused_reason"] or self.coordinator._owner_active(conversation)
                     or not work or work["state"] != "awaiting_approval"):
                 return "Held: pause, identity or work state changed; no send queued."
             if action == "skip":
@@ -88,7 +93,17 @@ class Approvals:
                 return "Submission locked: model qualification and controlled live authorization are required."
             if self.coordinator.mode == "observe":
                 return "Observe mode cannot submit an assisted draft."
-            messages = json.loads(request["record_json"])["reply"]["messages"]
+            versions_row = conn.execute("SELECT versions_json FROM decisions WHERE id = ?",
+                                        (request["decision_id"],)).fetchone()
+            versions = json.loads(versions_row[0])
+            if (versions.get("settings_digest", self.coordinator._settings_digest()) != self.coordinator._settings_digest()
+                    or versions.get("config_digest", (self.storage.get_runtime() or {}).get("config_digest"))
+                    != (self.storage.get_runtime() or {}).get("config_digest")):
+                return "Configuration changed; request a fresh draft. No send queued."
+            try:
+                messages = json.loads(request["record_json"])["reply"]["messages"]
+            except (ValueError, KeyError, TypeError):
+                return "Invalid stored draft; no send queued."
             authority = "owner_approved"
             if action == "edit":
                 if type(replacement) is not str or not replacement.strip():
@@ -96,11 +111,15 @@ class Approvals:
                 messages = [replacement]
                 authority = "owner_command"
             settings = self.coordinator.settings
-            if len(messages) > settings.burst_max_items or any(len(text) > settings.bubble_max_chars for text in messages):
+            if (type(messages) is not list or not messages or len(messages) > settings.burst_max_items
+                    or any(type(text) is not str or not text.strip() or len(text) > settings.bubble_max_chars
+                           or any(ord(ch) < 32 and ch not in "\n\t" for ch in text) for text in messages)
+                    or sum(len(text) for text in messages) > settings.reply_max_chars):
                 return "Text exceeds transport limits; no truncation or send."
             for index, text in enumerate(messages):
                 self.storage.add_outbox_item(decision_id=request["decision_id"], item_index=index,
-                    conversation_id=cid, text=text, authority=authority, revision=request["source_revision"])
+                    conversation_id=cid, text=text, authority=authority, revision=request["source_revision"],
+                    config_digest=(self.storage.get_runtime() or {}).get("config_digest"))
             conn.execute("UPDATE approval_requests SET state = 'approved', owner_edit = ? WHERE id = ?",
                          (replacement, request_id))
             self.storage.set_decision_status(request["decision_id"], "queued")

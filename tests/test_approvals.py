@@ -58,6 +58,22 @@ class ApprovalTests(unittest.TestCase):
         self.assertEqual(self.storage.outbox_items(), [])
         self.assertEqual(self.storage.conn.execute("SELECT count(*) FROM correction_rules").fetchone()[0], 0)
 
+    def test_recreating_same_request_does_not_supersede_or_extend_it(self):
+        before = dict(self.storage.conn.execute("SELECT * FROM approval_requests WHERE id = ?", (self.request,)).fetchone())
+        self.clock.advance(10)
+        self.assertEqual(self.approvals.create(self.decision), self.request)
+        after = dict(self.storage.conn.execute("SELECT * FROM approval_requests WHERE id = ?", (self.request,)).fetchone())
+        self.assertEqual(before, after)
+
+    def test_takeover_and_transport_total_hold_without_partial_enqueue(self):
+        self.storage.set_owner_active_until(self.cid, "2099-01-01T00:00:00+00:00")
+        self.assertIn("Held", self.approvals.act(self.request, "send"))
+        self.storage.set_owner_active_until(self.cid, None)
+        self.storage.conn.execute("UPDATE decisions SET record_json = ? WHERE id = ?",
+            (json.dumps({"reply": {"messages": ["x" * 450] * 3}}), self.decision))
+        self.assertIn("limits", self.approvals.act(self.request, "send"))
+        self.assertEqual(self.storage.outbox_items(), [])
+
 
 if __name__ == "__main__":
     unittest.main()

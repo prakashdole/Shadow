@@ -526,6 +526,9 @@ class InstagramBrowser:
                               error_code=failed.detail)
 
         async def bound_check(point: CheckPoint) -> bool:
+            if (self._offsite or not host_allowed(self.page.url or "")
+                    or not same_thread(thread_id_from_url(self.page.url or ""), thread_id)):
+                return False
             return await self._check_account() is None and await check(point)
 
         return await _send_on_page(self.page, thread_id, text, bound_check)

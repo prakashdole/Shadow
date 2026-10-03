@@ -324,6 +324,7 @@ def enqueue_owner_send(
         text=stripped,
         authority="owner_command",
         revision=revision,
+        config_digest=(storage.get_runtime() or {}).get("config_digest"),
     )
     work = storage.get_work(conversation_id)
     if work is None:

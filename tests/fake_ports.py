@@ -59,7 +59,7 @@ def read(
     events: tuple = (),
     *,
     status: str = "ok",
-    is_group: bool | None = None,
+    is_group: bool | None = False,
     composer_text: str = "",
     participant_links: int = 1,
     complete: bool = True,
