@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 import os
 import sys
 from datetime import datetime, timezone
@@ -48,6 +49,37 @@ def run(once: bool, dry_run: bool, verbose: bool) -> None:
         "Offline check: `shadow reply`."
     )
     raise SystemExit(2)
+
+
+@cli.command("observe-once")
+def observe_once_command() -> None:
+    """Inspect one inbox snapshot with v2; no model call or Instagram send."""
+    from shadow.instagram import InstagramBrowser
+    from shadow.observe import observe_once
+    from shadow.settings import SettingsError, data_dir, load_settings
+    from shadow.storage import open_storage
+
+    account_id = os.environ.get("SHADOW_ACCOUNT_ID", "").strip()
+    expected_handle = os.environ.get("SHADOW_EXPECTED_ACCOUNT", "").strip()
+    if not account_id or not expected_handle:
+        raise click.ClickException(
+            "Set SHADOW_ACCOUNT_ID and SHADOW_EXPECTED_ACCOUNT privately before observing."
+        )
+    try:
+        directory = data_dir()
+        settings = load_settings(directory)
+        with open_storage(directory) as storage:
+            browser = InstagramBrowser(
+                cdp_url=os.environ.get("SHADOW_CDP_URL", "http://127.0.0.1:9222"),
+                expected_account=expected_handle,
+            )
+            report = asyncio.run(observe_once(storage, browser, settings, account_id))
+    except (SettingsError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(
+        f"rows={report.rows} opened={report.opened} ingested={report.ingested} "
+        f"held={report.held} status={report.stopped_reason or 'ok'}"
+    )
 
 
 @cli.command("import-history")

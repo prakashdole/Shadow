@@ -144,6 +144,12 @@ class TestAccountBinding(CoordinatorCase):
         resumed = Coordinator(self.storage, self.browser, self.decisions, self.settings)
         self.assertEqual(resumed.account_id, ACCOUNT)
 
+    async def test_rejects_a_different_account_on_restart(self) -> None:
+        await self.coordinator.startup()
+        with self.assertRaisesRegex(ValueError, "stored account binding"):
+            Coordinator(self.storage, self.browser, self.decisions, self.settings,
+                        account_id="other-test-account")
+
 
 # --- S02 / D40: baseline and overlap -----------------------------------
 

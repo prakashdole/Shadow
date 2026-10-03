@@ -198,7 +198,7 @@ class FactProposal:
 
 DecisionFailure = Literal[
     "budget_exhausted", "provider_error", "timeout", "refusal",
-    "truncated", "empty", "invalid_output",
+    "truncated", "empty", "invalid_output", "not_configured",
 ]
 
 

@@ -152,6 +152,9 @@ class Coordinator:
         self.rng = rng or random.Random()
         self.dry_run = dry_run
         self.account_id = account_id
+        runtime = self.storage.get_runtime()
+        if runtime and self.account_id and runtime["account_id"] != self.account_id:
+            raise ValueError("account_id differs from the stored account binding")
         if not self.account_id:
             self.account_id = self._stored_account_id()
         self._dom_unknown_last_alert: str | None = None

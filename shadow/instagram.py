@@ -27,7 +27,7 @@ from playwright.async_api import Route, async_playwright
 
 from shadow.browser import _is_main_frame, check_url, host_allowed
 from shadow.contracts import (
-    InboxResult, InboxRow, ReadResult, SendCheck, SendResult,
+    CheckPoint, InboxResult, InboxRow, ReadResult, SendCheck, SendResult,
 )
 from shadow.dom import (
     JS_CLEAR_COMPOSER, JS_COMPOSER, JS_RAW, interpret_inbox, interpret_read,
@@ -230,7 +230,6 @@ class InstagramBrowser:
         self.cdp_url = cdp_url
         # A comparison value only. Never logged, never returned in a result.
         self._expected_account = expected_account
-        self._account_checked = expected_account is None
         self._account_detail = ""
         self._pw = None
         self._browser = None
@@ -324,20 +323,16 @@ class InstagramBrowser:
         return self._account_detail
 
     async def _check_account(self) -> InboxResult | None:
-        """A different handle is wrong_account, a global pause.
-
-        A handle that cannot be read is not a failure: the read proceeds and
-        says so in `detail`. The handle is never returned or logged.
-        """
-        if self._account_checked or self._expected_account is None:
+        """Recheck the account before every read and submission checkpoint."""
+        if self._expected_account is None:
             return None
-        self._account_checked = True
         found = await self.page.evaluate(_JS_NAV_HANDLE)
         if not found:
             self._account_detail = "account_unverified"
-            return None
+            return InboxResult(status="wrong_account", detail=self._account_detail)
         if found != self._expected_account:
             return InboxResult(status="wrong_account", detail="account_handle_differs")
+        self._account_detail = ""
         return None
 
     # --- navigation --------------------------------------------------
@@ -368,6 +363,9 @@ class InstagramBrowser:
         if "/direct/" in (self.page.url or "") and raw.get("list_present"):
             return interpret_inbox(raw, extra_detail=self._detail())
         navigations = await self._goto(IG_INBOX)
+        failed = await self._check_account()
+        if failed:
+            return failed
         try:
             await self.page.wait_for_selector(
                 '[aria-label="Thread list"]', state="attached", timeout=15_000
@@ -380,6 +378,9 @@ class InstagramBrowser:
 
     async def open_row(self, row: InboxRow) -> ReadResult:
         assert self.page
+        failed = await self._check_account()
+        if failed:
+            return ReadResult(status=failed.status, detail=failed.detail)
         # The list reorders and unread flags change between reads (P00b Q10), so
         # the row is re-read immediately before the click and must still be
         # unique. A display label is never an identity.
@@ -403,11 +404,17 @@ class InstagramBrowser:
             return ReadResult(status="dom_unknown", navigations_used=1,
                               detail="row_did_not_open_a_thread")
         self._assert_on_site()
+        failed = await self._check_account()
+        if failed:
+            return ReadResult(status=failed.status, navigations_used=1, detail=failed.detail)
         return interpret_read(await self.page.evaluate(JS_RAW),
                               thread_id_from_url(self.page.url or ""), 1)
 
     async def read_thread(self, thread_id: str, want: int = 0) -> ReadResult:
         assert self.page
+        failed = await self._check_account()
+        if failed:
+            return ReadResult(status=failed.status, detail=failed.detail)
         navigations = 0
         if not same_thread(thread_id_from_url(self.page.url or ""), thread_id):
             navigations = await self._goto(IG_THREAD.format(thread_id=thread_id))
@@ -426,6 +433,10 @@ class InstagramBrowser:
             await self._load_history(want)
 
         raw = await self.page.evaluate(JS_RAW)
+        failed = await self._check_account()
+        if failed:
+            return ReadResult(status=failed.status, navigations_used=navigations,
+                              detail=failed.detail)
         if not same_thread(thread_id_from_url(self.page.url or ""), thread_id):
             return ReadResult(status="wrong_thread", thread_id=None,
                               navigations_used=navigations,
@@ -464,4 +475,12 @@ class InstagramBrowser:
         if not same_thread(thread_id_from_url(url), thread_id):
             return SendResult(status="failed_before_submit", thread_id=None,
                               error_code="wrong_thread")
-        return await _send_on_page(self.page, thread_id, text, check)
+        failed = await self._check_account()
+        if failed:
+            return SendResult(status="failed_before_submit", thread_id=thread_id,
+                              error_code=failed.detail)
+
+        async def bound_check(point: CheckPoint) -> bool:
+            return await self._check_account() is None and await check(point)
+
+        return await _send_on_page(self.page, thread_id, text, bound_check)
