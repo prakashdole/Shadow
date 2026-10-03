@@ -32,7 +32,7 @@ from shadow.contracts import (
     CheckPoint, InboxResult, InboxRow, ReadResult, SendCheck, SendResult,
 )
 from shadow.dom import (
-    JS_CLEAR_COMPOSER, JS_COMPOSER, JS_RAW, interpret_inbox, interpret_read,
+    JS_CLEAR_COMPOSER, JS_COMPOSER, JS_RAW, JS_ROW_LINES, interpret_inbox, interpret_read,
     normalize, same_thread, thread_id_from_url,
 )
 
@@ -69,6 +69,7 @@ _SKIP_GUARD = re.compile(
 # passed as an argument, never interpolated into a selector, so owner-controlled
 # text cannot break out of it.
 _JS_CLICK_ROW = r"""(label) => {
+""" + JS_ROW_LINES + r"""
     const list = document.querySelector('[aria-label="Thread list"]');
     if (!list) return 0;
     const band = [...list.querySelectorAll('div[role="button"]')].filter(el => {
@@ -77,7 +78,7 @@ _JS_CLICK_ROW = r"""(label) => {
     });
     const rows = band.filter(el => !band.some(o => o !== el && el.contains(o)));
     const hits = rows.filter(el => {
-        const lines = (el.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
+        const lines = rowLines(el);
         return lines[0] === label;
     });
     if (hits.length !== 1) return hits.length;
@@ -86,6 +87,10 @@ _JS_CLICK_ROW = r"""(label) => {
 }"""
 
 _JS_ON_THREAD = r"""() => /^\/direct\/t\/\d+\/?$/.test(location.pathname)"""
+_JS_THREAD_OPENED = r"""(previous) => {
+    const match = location.pathname.match(/^\/direct\/t\/(\d+)\/?$/);
+    return !!match && (!previous || match[1] !== previous);
+}"""
 
 _JS_PANE_CENTRE = r"""() => {
     const vw = document.documentElement.clientWidth;
@@ -463,7 +468,8 @@ class InstagramBrowser:
         if not row.label_is_unique:
             return ReadResult(status="ambiguous_identity",
                               detail="label_not_unique_across_rows")
-        inbox = interpret_inbox(await self.page.evaluate(JS_RAW),
+        raw = await self.page.evaluate(JS_RAW)
+        inbox = interpret_inbox(raw,
                                  extra_detail=self._detail())
         if inbox.status != "ok":
             return ReadResult(status=inbox.status, detail=inbox.detail)
@@ -473,9 +479,15 @@ class InstagramBrowser:
                               detail=f"row_label_matches_{len(matches)}")
 
         self._offsite = None
-        await self.page.evaluate(_JS_CLICK_ROW, row.label)
+        previous = thread_id_from_url(self.page.url or "")
+        selected = any(r.get('pressed') and r.get('lines', [None])[0] == row.label
+                       for r in raw.get('rows', []))
+        clicked = await self.page.evaluate(_JS_CLICK_ROW, row.label)
+        if clicked != 1:
+            return ReadResult(status="ambiguous_identity", detail="row_changed_before_click")
         try:
-            await self.page.wait_for_function(_JS_ON_THREAD, timeout=10_000)
+            await self.page.wait_for_function(_JS_THREAD_OPENED,
+                                             arg=None if selected else previous, timeout=10_000)
         except Exception:
             return ReadResult(status="dom_unknown", navigations_used=1,
                               detail="row_did_not_open_a_thread")
@@ -483,10 +495,15 @@ class InstagramBrowser:
         if not await self._wait_readable(thread=True):
             return ReadResult(status="dom_unknown", navigations_used=1,
                               detail="thread_did_not_settle")
+        raw = await self.page.evaluate(JS_RAW)
+        selected_rows = [r for r in raw.get('rows', []) if r.get('pressed')]
+        if (len(selected_rows) != 1 or selected_rows[0].get('lines', [None])[0] != row.label):
+            return ReadResult(status="ambiguous_identity", navigations_used=1,
+                              detail="opened_row_not_selected")
         failed = await self._check_account()
         if failed:
             return ReadResult(status=failed.status, navigations_used=1, detail=failed.detail)
-        return interpret_read(await self.page.evaluate(JS_RAW),
+        return interpret_read(raw,
                               thread_id_from_url(self.page.url or ""), 1)
 
     async def read_thread(self, thread_id: str, want: int = 0) -> ReadResult:

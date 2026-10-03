@@ -143,6 +143,48 @@ class B02IdentityTest(BrowserCase):
         self.assertFalse(same_thread(thread_id_from_url(page_url), "12"))
         self.assertTrue(same_thread(thread_id_from_url(page_url), "12345"))
 
+    async def test_click_that_leaves_previous_thread_open_is_not_success(self):
+        from shadow.contracts import InboxRow
+        from shadow.instagram import InstagramBrowser
+        from unittest.mock import patch
+        import json
+
+        await self.open_fixture('thread_1to1.html')
+        class FixturePage:
+            url = 'https://www.instagram.com/direct/t/12345/'
+            async def evaluate(inner, script, *args):
+                return await self.page.evaluate(script, *args)
+            async def wait_for_function(inner, script, **kwargs):
+                script = script.replace('location.pathname', json.dumps('/direct/t/12345/'))
+                return await self.page.wait_for_function(script, timeout=120, **{
+                    k: v for k, v in kwargs.items() if k != 'timeout'})
+        adapter = InstagramBrowser()
+        adapter.page = FixturePage()
+        row = InboxRow(0, 'Test Contact One', 'You: chalo', 'owner_last', False, True)
+        # The rendered row is not selected; its click does nothing.
+        await self.page.evaluate("document.querySelector('.row').setAttribute('aria-pressed', 'false')")
+        with patch.object(adapter, '_assert_on_site'):
+            result = await adapter.open_row(row)
+        self.assertEqual(result.status, 'dom_unknown')
+        self.assertEqual(result.detail, 'row_did_not_open_a_thread')
+
+    async def test_online_badge_is_not_a_contact_name_or_inbound_preview(self):
+        from shadow.instagram import _JS_CLICK_ROW
+
+        await self.open_fixture('inbox.html')
+        await self.page.evaluate("""() => {
+            const row = document.querySelector('.row');
+            row.querySelector('.avatar').innerHTML = '<div>Active</div>';
+            row.querySelector('.name').setAttribute('dir', 'auto');
+            row.querySelector('.preview').setAttribute('dir', 'auto');
+            row.querySelector('.preview').textContent = 'You sent an attachment. · 5m';
+        }""")
+        row = (await self.inbox()).rows[0]
+        self.assertEqual(row.label, 'Test Contact One')
+        self.assertEqual(row.preview_class, 'owner_last')
+        self.assertFalse(row.unread_hint)
+        self.assertEqual(await self.page.evaluate(_JS_CLICK_ROW, row.label), 1)
+
     async def test_send_one_refuses_a_wrong_thread_id_without_typing(self) -> None:
         from shadow.instagram import InstagramBrowser
 
@@ -234,6 +276,18 @@ class B03KindsTest(BrowserCase):
             document.querySelector('.pane').prepend(art);
         }""")
         self.assertEqual((await self.read()).events[0].text, '🥀🥀')
+
+    async def test_live_collage_post_is_media_not_authored_caption(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            const art = document.createElement('div'); art.setAttribute('role', 'article');
+            art.innerHTML = '<a href="/fictional_creator/" dir="auto">creator</a>'
+              + '<div role="button"><img alt=""><svg aria-label="Collage"><title>Collage</title></svg>'
+              + '<span dir="auto">creator A third-party caption, not the sender’s words.</span></div>';
+            document.querySelector('.pane').prepend(art);
+        }""")
+        event = (await self.read()).events[0]
+        self.assertEqual((event.kind, event.media_label), ('media', 'post'))
 
     async def test_live_reel_icon_and_creator_links_do_not_become_text_or_participants(self):
         await self.open_fixture("thread_1to1.html")

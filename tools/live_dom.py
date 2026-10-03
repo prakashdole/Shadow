@@ -34,6 +34,9 @@ JS_STRUCTURE = r"""() => {
                 contentVisibility: s.contentVisibility};
     };
     return {
+        rows: [...document.querySelectorAll('[aria-label="Thread list"] div[role="button"]')]
+            .filter(el => el.getBoundingClientRect().height >= 60 && el.getBoundingClientRect().height <= 90)
+            .map(el => ({geometry: geometry(el), markup: el.outerHTML})),
         scrolls: [...document.querySelectorAll('div')]
             .filter(el => el.clientHeight >= 200 && el.scrollHeight > el.clientHeight + 40)
             .map(geometry),

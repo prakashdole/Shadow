@@ -81,10 +81,20 @@ _THREAD_PATH = re.compile(r"/direct/t/(\d+)(?:/|$|[?#])")
 
 # --- the single copy of the in-page JavaScript --------------------------
 
+# Online badges live outside the dir=auto name/preview leaves. The click and
+# inbox reader must use the same label extraction, including fixture fallback.
+JS_ROW_LINES = r"""const rowLines = el => {
+    const leaves = [...el.querySelectorAll('[dir="auto"]')]
+        .filter(n => !n.querySelector('[dir="auto"]'));
+    if (leaves.length) return leaves.map(n => (n.innerText || '').trim()).filter(Boolean);
+    return (el.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
+};"""
+
 # One evaluate returns everything both readers need. `window.__fixturePath` is
 # only ever set by a test on a file:// page; on instagram.com it is undefined
 # and location.pathname is used.
 JS_RAW = r"""() => {
+""" + JS_ROW_LINES + r"""
     const OUT = {
         path: (window.__fixturePath !== undefined && window.__fixturePath !== null)
             ? String(window.__fixturePath)
@@ -139,7 +149,7 @@ JS_RAW = r"""() => {
         // One row per thread: keep only the outermost, drop nested role=buttons.
         const rows = band.filter(el => !band.some(other => other !== el && el.contains(other)));
         for (const el of rows) {
-            const lines = (el.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
+            const lines = rowLines(el);
             if (!lines.length) continue;
             const g = rect(el);
             OUT.rows.push({
@@ -192,7 +202,7 @@ JS_RAW = r"""() => {
             for (const icon of art.querySelectorAll('svg[aria-label], svg title')) {
                 const label = icon.getAttribute('aria-label') || icon.textContent || '';
                 if (/^(Clip|Reel)$/i.test(label.trim())) return 'reel';
-                if (/^Post$/i.test(label.trim())) return 'post';
+                if (/^(Post|Collage)$/i.test(label.trim())) return 'post';
             }
             const direct = art.querySelector('a[href*="/reel/"], a[href*="/tv/"], a[href*="/p/"]');
             if (direct) {
