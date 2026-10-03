@@ -82,6 +82,32 @@ def observe_once_command() -> None:
     )
 
 
+@cli.command("owner-poll-once")
+def owner_poll_once_command() -> None:
+    """Process one private Telegram poll; never opens Instagram or sends there."""
+    from shadow.coordinator import Coordinator
+    from shadow.observe import NoDecisionProvider
+    from shadow.owner import OwnerCommands, TelegramTransport
+    from shadow.settings import SettingsError, data_dir, load_settings
+    from shadow.storage import open_storage
+
+    token = os.environ.get("SHADOW_TELEGRAM_TOKEN", "")
+    try:
+        user_id = int(os.environ.get("SHADOW_TELEGRAM_USER_ID", ""))
+        chat_id = int(os.environ.get("SHADOW_TELEGRAM_CHAT_ID", ""))
+        with open_storage(data_dir()) as storage:
+            runtime = storage.get_runtime()
+            if not runtime or not runtime["account_id"]:
+                raise ValueError("Observe and bind the Instagram account before owner polling")
+            coordinator = Coordinator(storage, None, NoDecisionProvider(),
+                                      load_settings(data_dir()), account_id=runtime["account_id"])
+            handler = OwnerCommands(storage, coordinator, user_id=user_id, chat_id=chat_id)
+            count = TelegramTransport(token).poll_once(handler)
+    except (ValueError, SettingsError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from None
+    click.echo(f"accepted_commands={count}")
+
+
 @cli.command("import-history")
 @click.option("--source", required=True, type=click.Path(exists=True),
               help="Directory holding people/<folder>/chat_log.jsonl.")

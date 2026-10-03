@@ -303,7 +303,17 @@ ALTER TABLE decisions_v2 RENAME TO decisions;
 # the transaction rather than inside it. A rebuild that would break a reference
 # is caught by `PRAGMA foreign_key_check` before the COMMIT, so it still rolls
 # back whole.
-MIGRATIONS: tuple[tuple, ...] = ((1, SCHEMA_V1), (2, SCHEMA_V2, True))
+SCHEMA_V3 = """
+CREATE TABLE owner_updates (
+    update_id INTEGER PRIMARY KEY,
+    command TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    delivered INTEGER NOT NULL DEFAULT 0 CHECK (delivered IN (0, 1)),
+    processed_at TEXT NOT NULL
+);
+"""
+
+MIGRATIONS: tuple[tuple, ...] = ((1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3))
 CURRENT_VERSION = MIGRATIONS[-1][0]
 
 
@@ -1281,6 +1291,34 @@ class Storage:
             f"SELECT * FROM alerts{where} ORDER BY id", values
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def last_owner_update_id(self) -> int | None:
+        row = self._conn.execute("SELECT MAX(update_id) FROM owner_updates").fetchone()
+        return row[0]
+
+    def owner_update(self, update_id: int) -> dict | None:
+        row = self._conn.execute(
+            "SELECT * FROM owner_updates WHERE update_id = ?", (update_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def record_owner_update(self, update_id: int, command: str, outcome: str) -> None:
+        with self.transaction() as conn:
+            conn.execute(
+                "INSERT INTO owner_updates (update_id, command, outcome, processed_at) "
+                "VALUES (?, ?, ?, ?)", (update_id, command, outcome, utcnow())
+            )
+
+    def pending_owner_responses(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT update_id, outcome FROM owner_updates "
+            "WHERE delivered = 0 AND command != 'ignored' ORDER BY update_id"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def mark_owner_response_delivered(self, update_id: int) -> None:
+        with self.transaction() as conn:
+            conn.execute("UPDATE owner_updates SET delivered = 1 WHERE update_id = ?", (update_id,))
 
     def set_alert_state(
         self,

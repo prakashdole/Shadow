@@ -56,13 +56,13 @@ class V2Case(unittest.TestCase):
 
 class TestFreshV2(V2Case):
     def test_current_version_is_two_and_v1_sql_is_untouched(self) -> None:
-        self.assertEqual(ST.CURRENT_VERSION, 2)
+        self.assertEqual(ST.CURRENT_VERSION, 3)
         self.assertEqual(
-            self.storage.conn.execute("PRAGMA user_version").fetchone()[0], 2
+            self.storage.conn.execute("PRAGMA user_version").fetchone()[0], ST.CURRENT_VERSION
         )
         # v1 is still described by v1 SQL: a fresh database applies both, and
         # the v1 statements are byte-identical to what P01 shipped.
-        self.assertEqual(len(ST.MIGRATIONS), 2)
+        self.assertEqual(len(ST.MIGRATIONS), 3)
         self.assertEqual(ST.MIGRATIONS[0][0], 1)
         self.assertIn("CREATE TABLE outbox", ST.MIGRATIONS[0][1])
 
@@ -206,7 +206,7 @@ class TestMigrationFromPopulatedV1(V2Case):
 
     def test_migrated_to_v2_with_data_intact(self) -> None:
         self.assertEqual(
-            self.storage.conn.execute("PRAGMA user_version").fetchone()[0], 2
+            self.storage.conn.execute("PRAGMA user_version").fetchone()[0], ST.CURRENT_VERSION
         )
         conversation = self.storage.get_conversation(1)
         self.assertEqual(conversation["thread_id"], "34028236684171030094912811223344556")
