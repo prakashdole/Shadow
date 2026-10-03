@@ -92,12 +92,14 @@ class OwnerCommands:
                     "/correct <thread-id|global> <dimension> <value> /undo <rule-id> "
                     "/accept-fact <fact-id> /forget <fact|rule> <id>. Sending and autonomous mode are locked.")
         if command == "/status":
+            from shadow.quality import metrics
+
             runtime = self.storage.get_runtime() or {}
             pending = len(self.storage.work_in_states(("pending", "due", "awaiting_approval")))
             held = len(self.storage.work_in_states(("held", "owner_active")))
             return (f"mode={runtime.get('mode', 'observe')} "
                     f"pause={runtime.get('pause_reason') or 'none'} "
-                    f"pending={pending} held={held}")
+                    f"pending={pending} held={held}; " + json.dumps(metrics(self.storage, self.coordinator.clock.now())))
         if command == "/pause":
             if arg:
                 return "Use /pause without arguments; per-thread pause is not installed."

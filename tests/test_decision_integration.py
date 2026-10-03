@@ -64,6 +64,22 @@ class DecisionIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.storage.get_work(self.cid)["state"], "pending")
         self.assertEqual(self.storage.outbox_items(), [])
 
+    async def test_current_batch_keeps_early_danger_beyond_outgoing_burst_cap(self):
+        for index in range(7):
+            self.storage.add_event(conversation_id=self.cid, sender="contact", kind="text",
+                                   text=f"follow-up {index}", source="dom", origin="unknown")
+        self.storage.update_work(self.cid, first_pending_seq=0)
+        class Capturing(FakeDecisions):
+            async def assess(inner, data):
+                self.assertEqual(len(data.current_batch), 8)
+                self.assertEqual(data.current_batch[0].text, "hello")
+                return await super().assess(data)
+        coordinator = Coordinator(self.storage, FakeBrowser(), Capturing(), Settings(), account_id="fictional")
+        try:
+            await coordinator._assess(self.cid, TickReport())
+        finally:
+            await coordinator.close()
+
 
 if __name__ == "__main__":
     unittest.main()

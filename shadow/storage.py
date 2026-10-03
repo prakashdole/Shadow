@@ -375,9 +375,22 @@ CREATE TABLE approval_requests (
 );
 """
 
+SCHEMA_V7 = """
+ALTER TABLE conversation_work ADD COLUMN first_pending_seq INTEGER;
+CREATE TABLE quality_signals (
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    inbound_revision INTEGER NOT NULL,
+    decision_id INTEGER NOT NULL REFERENCES decisions(id),
+    signal TEXT NOT NULL CHECK(signal IN ('confusion','automation_question')),
+    created_at TEXT NOT NULL,
+    UNIQUE(conversation_id, inbound_revision, signal)
+);
+"""
+
 MIGRATIONS: tuple[tuple, ...] = (
     (1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3), (4, SCHEMA_V4), (5, SCHEMA_V5),
-    (6, SCHEMA_V6),
+    (6, SCHEMA_V6), (7, SCHEMA_V7),
 )
 CURRENT_VERSION = MIGRATIONS[-1][0]
 
@@ -774,6 +787,7 @@ class Storage:
             "sampled_delay_seconds",
             "last_inbound_at",
             "held_reason",
+            "first_pending_seq",
         }
     )
 

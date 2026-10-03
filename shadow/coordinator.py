@@ -343,6 +343,16 @@ class Coordinator:
         self.storage.raise_alert(dedupe_key=key, tier="action", reason="dom_unknown")
 
     async def _handle_row(self, row: InboxRow, report: TickReport) -> None:
+        # Rows have no platform ID until opened. If a previously excluded label
+        # appears, hold every matching row instead of reading a possibly ignored
+        # contact. A renamed excluded label cannot be recognised pre-open (D31).
+        excluded = self.storage.conn.execute(
+            "SELECT 1 FROM conversations WHERE account_id = ? AND label = ? AND contact_status = 'excluded'",
+            (self.account_id, row.label),
+        ).fetchone()
+        if excluded:
+            report.note("excluded label: no thread opened")
+            return
         if row.preview_class in PREVIEW_ONLY:
             # The preview alone proves no reply is needed. Record it and leave
             # the thread unread on the owner's phone.
@@ -624,6 +634,8 @@ class Coordinator:
                 state="pending",
                 cancel_generation=0,
             )
+            self.storage.update_work(conversation_id,
+                                     first_pending_seq=self._new_batch_first_seq(conversation_id, len(events)))
         else:
             # A newer revision invalidates older drafts and items: they were
             # decided against context that has now changed.
@@ -641,9 +653,17 @@ class Coordinator:
                 last_inbound_at=ST.iso(last_inbound),
                 sampled_delay_seconds=int(delay),
                 held_reason=None,
+                first_pending_seq=(work.get("first_pending_seq")
+                                   if work["state"] in ("pending", "assessing", "drafted", "awaiting_approval", "due")
+                                   and work.get("first_pending_seq") is not None
+                                   else self._new_batch_first_seq(conversation_id, len(events))),
             )
         self.storage.set_paused_reason(conversation_id, None)
         report.note(f"conversation {conversation_id}: work queued (revision {revision})")
+
+    def _new_batch_first_seq(self, conversation_id, count):
+        events = self.storage.get_events(conversation_id)
+        return events[max(0, len(events) - count)]["seq"] if events else 0
 
     def _momentum(self, conversation_id: int, now: datetime) -> bool:
         last = None
@@ -667,10 +687,14 @@ class Coordinator:
         memory = ContextMemory(self.storage)
         bundle = memory.bundle(conversation_id, self.clock.now())
         work = self.storage.get_work(conversation_id)
+        boundary = work.get("first_pending_seq")
+        if boundary is None:
+            owners = [event["seq"] for event in events if event["sender"] == "owner"]
+            boundary = max(owners, default=-1) + 1
         batch = [
             e for e in events
-            if e["source"] == "dom" and e["sender"] == "contact"
-        ][-self._batch_size():]
+            if e["source"] == "dom" and e["sender"] == "contact" and e["seq"] >= boundary
+        ]
         if not batch:
             self.storage.update_work(conversation_id, state="idle", held_reason=None)
             return
@@ -703,6 +727,7 @@ class Coordinator:
             self._hold(conversation_id, f"assessment_{assessed.failure or 'invalid_output'}", report, tier="action")
             return
         assessment = assessed.value
+        self._record_quality_signal(conversation_id, work, assessment.signals)
         self._start_extraction(data)
         assessment_record = {
             "assessment": {
@@ -825,6 +850,11 @@ class Coordinator:
         task = asyncio.create_task(extract())
         self._extraction_tasks.add(task)
         task.add_done_callback(self._extraction_tasks.discard)
+
+    def _record_quality_signal(self, cid, work, signals):
+        from shadow.quality import record_signals
+
+        record_signals(self, cid, work["inbound_revision"], signals)
 
     async def close(self):
         tasks = list(self._extraction_tasks)
