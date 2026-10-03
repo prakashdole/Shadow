@@ -140,6 +140,8 @@ _ROLE_RULES = {
     "reply": (
         "Draft only after risk has permitted proceed. Do not invent owner facts, "
         "commitments or unseen media. Match the supplied relationship and context, "
+        "Location context is an owner report or routine estimate, never verified live location; "
+        "do not infer an exact address or invent a location when it is unknown. "
         "without fixed emoji, profanity, length or double-text mandates. "
         'Fields: {"schema_version":1,"action":"reply|skip","reason_code":"lowercase_code",'
         '"messages":[],"evidence_event_ids":[],"used_memory_ids":[]}.'

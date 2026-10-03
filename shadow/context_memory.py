@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import date, time, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from shadow.storage import iso, parse_iso, utcnow
 
@@ -18,6 +19,109 @@ STYLE_RULES = {
     "tone": {"serious": "Prefer straightforward, serious replies.",
              "contextual": "Let humour and seriousness follow the conversation."},
 }
+
+
+def validate_profile(profile):
+    allowed = {"preferred_name", "language", "style", "routine", "current_update"}
+    if type(profile) is not dict or not set(profile) <= allowed or len(json.dumps(profile)) > 8000:
+        raise ValueError("Invalid owner profile fields or size")
+    if any(type(profile[key]) is not str or len(profile[key]) > 500
+           for key in ("preferred_name", "language", "style") if key in profile):
+        raise ValueError("Profile text fields must be bounded strings")
+    routine = profile.get("routine")
+    if routine is not None:
+        if (type(routine) is not dict or not {"timezone", "entries", "exceptions"} <= set(routine)
+                or not set(routine) <= {"timezone", "entries", "exceptions", "fallback"}
+                or type(routine["entries"]) is not list or len(routine["entries"]) > 20
+                or type(routine["exceptions"]) is not list or len(routine["exceptions"]) > 100):
+            raise ValueError("Routine requires timezone, entries and exceptions")
+        try:
+            ZoneInfo(routine["timezone"])
+        except (ZoneInfoNotFoundError, TypeError, ValueError):
+            raise ValueError("Routine requires a valid timezone") from None
+        for entry in routine["entries"]:
+            if (type(entry) is not dict or set(entry) != {"weekdays", "start", "end", "location"}
+                    or type(entry["weekdays"]) is not list or not entry["weekdays"]
+                    or any(type(day) is not int or not 0 <= day <= 6 for day in entry["weekdays"])
+                    or len(set(entry["weekdays"])) != len(entry["weekdays"])):
+                raise ValueError("Routine entries require weekdays (Monday=0), start, end and location")
+            for field in ("start", "end"):
+                if type(entry[field]) is not str or len(entry[field]) != 5:
+                    raise ValueError("Routine times must be HH:MM")
+                try:
+                    time.fromisoformat(entry[field])
+                except ValueError:
+                    raise ValueError("Invalid routine time") from None
+            if entry["start"] == entry["end"]:
+                raise ValueError("Routine interval must not be empty")
+            _location(entry["location"])
+        for exception in routine["exceptions"]:
+            if (type(exception) is not dict or "date" not in exception
+                    or not set(exception) <= {"date", "location"}):
+                raise ValueError("Exceptions require a date and optional location")
+            try:
+                date.fromisoformat(exception["date"])
+            except (TypeError, ValueError):
+                raise ValueError("Exception date must be YYYY-MM-DD") from None
+            if "location" in exception:
+                _location(exception["location"])
+        if "fallback" in routine:
+            _location(routine["fallback"])
+    update = profile.get("current_update")
+    if update is not None:
+        if type(update) is not dict or set(update) != {"location", "valid_from", "valid_until"}:
+            raise ValueError("Current update requires location, valid_from and valid_until")
+        _location(update["location"])
+        try:
+            start, end = parse_iso(update["valid_from"]), parse_iso(update["valid_until"])
+            if start is None or end is None or start.tzinfo is None or end.tzinfo is None or start >= end:
+                raise ValueError("invalid interval")
+        except (ValueError, TypeError):
+            raise ValueError("Current update requires an ordered timezone-aware interval") from None
+    return profile
+
+
+def _location(value):
+    if type(value) is not str or not value.strip() or len(value) > 200:
+        raise ValueError("Location must be a nonempty label of at most 200 characters")
+
+
+def profile_context(profile, now):
+    """Supply applicable estimates only; never an asserted live position."""
+    validate_profile(profile)
+    result = {key: value for key, value in profile.items() if key not in ("routine", "current_update")}
+    update = profile.get("current_update")
+    if update and parse_iso(update["valid_from"]) <= now < parse_iso(update["valid_until"]):
+        result["location_context"] = {"location": update["location"], "source": "dated_owner_update",
+                                      "live_verified": False, "valid_until": update["valid_until"]}
+        return result
+    routine = profile.get("routine")
+    if not routine:
+        return result
+    local = now.astimezone(ZoneInfo(routine["timezone"]))
+    exceptions = [item for item in routine["exceptions"] if item["date"] == local.date().isoformat()]
+    locations, source = set(), "routine_estimate"
+    if exceptions:
+        locations = {item["location"] for item in exceptions if "location" in item}
+        source = "owner_exception"
+    else:
+        current = local.strftime("%H:%M")
+        previous_day = (local.weekday() - 1) % 7
+        for entry in routine["entries"]:
+            start, end = entry["start"], entry["end"]
+            fits = (start <= current < end and local.weekday() in entry["weekdays"] if start < end
+                    else current >= start and local.weekday() in entry["weekdays"]
+                    or current < end and previous_day in entry["weekdays"])
+            if fits:
+                locations.add(entry["location"])
+        if not locations and "fallback" in routine:
+            locations.add(routine["fallback"])
+            source = "owner_approved_fallback"
+    if len(locations) == 1:
+        result["location_context"] = {"location": next(iter(locations)), "source": source, "live_verified": False}
+    else:
+        result["location_context"] = {"source": "unknown_or_conflicting", "live_verified": False}
+    return result
 
 
 class ContextMemory:
@@ -174,15 +278,12 @@ class ContextMemory:
         profile = self.storage.conn.execute("SELECT profile_json FROM owner_profile WHERE id = 1").fetchone()
         facts = tuple({key: row[key] for key in ("id", "value_text", "kind", "source_event_ids", "confidence_label", "valid_until")}
                       for row in self.facts(cid, now))
-        return {"owner_profile": json.loads(profile[0]) if profile else {}, "corrections": self.rules(cid),
+        owner_context = profile_context(json.loads(profile[0]), now) if profile else {}
+        return {"owner_profile": owner_context, "corrections": self.rules(cid),
                 "facts": facts, "memory_revision": self.revision(cid)}
 
     def set_profile(self, profile):
-        allowed = {"preferred_name", "language", "style", "routine", "current_update"}
-        if type(profile) is not dict or not set(profile) <= allowed or len(json.dumps(profile)) > 8000:
-            raise ValueError("Invalid owner profile fields or size")
-        if any(type(profile.get(key)) is not str for key in ("preferred_name", "language", "style") if key in profile):
-            raise ValueError("Profile text fields must be strings")
+        validate_profile(profile)
         with self.storage.transaction() as conn:
             conn.execute("INSERT INTO owner_profile(id, profile_json, updated_at) VALUES(1, ?, ?) "
                          "ON CONFLICT(id) DO UPDATE SET profile_json = excluded.profile_json, "

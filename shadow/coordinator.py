@@ -717,7 +717,11 @@ class Coordinator:
         from shadow.context_memory import ContextMemory
 
         memory = ContextMemory(self.storage)
-        bundle = memory.bundle(conversation_id, self.clock.now())
+        try:
+            bundle = memory.bundle(conversation_id, self.clock.now())
+        except (ValueError, TypeError):
+            self._hold(conversation_id, "invalid_owner_profile", report, tier="action")
+            return
         work = self.storage.get_work(conversation_id)
         boundary = work.get("first_pending_seq")
         if boundary is None:
