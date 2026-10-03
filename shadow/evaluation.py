@@ -202,6 +202,15 @@ def write_private_json(path, value):
     from pathlib import Path
     from shadow.operations import private_destination
 
+    def structured_default(item):
+        if isinstance(item, (set, frozenset)):
+            return sorted(item)
+        raise TypeError("Unsupported private report value")
+
+    # Validate serialization before opening the exclusive destination, so a
+    # failed report cannot leave an apparently complete but truncated file.
+    serialized = json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2,
+                            default=structured_default)
     target = private_destination(path)
     if not target.parent.is_dir():
         raise ValueError("Create a private output directory first")
@@ -209,7 +218,7 @@ def write_private_json(path, value):
         raise ValueError("Output directory must be owner-only (0700)")
     descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, sort_keys=True, indent=2)
+        stream.write(serialized)
         stream.write("\n")
     return Path(target)
 

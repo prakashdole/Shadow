@@ -135,6 +135,8 @@ _ROLE_RULES = {
         "Assess the current inbound batch in context. Distress, money, commitment, "
         "privacy and unsupported content must hold; imminent distress is urgent. "
         "An automation question must not receive a false denial: signal it. "
+        "signals may contain only confusion, automation_question, owner_needed; "
+        "use [] when none applies. Do not put risk categories or preferences in signals. "
         'Fields: {"schema_version":1,"risk":"none|money|commitment|distress|privacy|unsupported|uncertain",'
         '"reason_code":"lowercase_code","action_hint":"proceed|hold|urgent",'
         '"signals":[],"evidence_event_ids":[]}.'
@@ -145,6 +147,8 @@ _ROLE_RULES = {
         "Location context is an owner report or routine estimate, never verified live location; "
         "do not infer an exact address or invent a location when it is unknown. "
         "without fixed emoji, profanity, length or double-text mandates. "
+        "messages is an array of plain text strings, never objects or event records; "
+        "put source IDs only in evidence_event_ids. used_memory_ids contains only supplied fact IDs. "
         'Fields: {"schema_version":1,"action":"reply|skip","reason_code":"lowercase_code",'
         '"messages":[],"evidence_event_ids":[],"used_memory_ids":[]}.'
     ),
@@ -277,8 +281,14 @@ class StructuredDecisions:
                 )
         except TimeoutError:
             return RoleOutcome(role=role, failure="timeout")
-        except Exception:
-            return RoleOutcome(role=role, failure="provider_error")
+        except Exception as exc:
+            code = getattr(exc, "code", None)
+            diagnostic = {"provider_error_code": code} if code in (
+                "provider_rate_limited", "provider_auth_failed", "provider_token_limit",
+                "provider_balance_exhausted",
+                "provider_http_error", "provider_network_error", "provider_rejected",
+                "provider_response_too_large", "provider_invalid_response") else {}
+            return RoleOutcome(role=role, failure="provider_error", versions=diagnostic)
         if response.stop_reason != "end_turn":
             return RoleOutcome(role=role, failure="truncated" if response.stop_reason == "max_tokens"
                                else "refusal" if response.stop_reason == "refusal"

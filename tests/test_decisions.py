@@ -39,6 +39,9 @@ class DecisionBoundaryTests(unittest.TestCase):
         self.assertEqual(parse_role("risk", json.dumps(raw), {4}).value.action_hint, "urgent")
         raw["risk"] = "safe enough"
         self.assertEqual(parse_role("risk", json.dumps(raw), {4}).failure, "invalid_output")
+        raw["risk"] = "none"
+        raw["signals"] = ["preference"]
+        self.assertEqual(parse_role("risk", json.dumps(raw), {4}).failure, "invalid_output")
 
     def test_roles_budget_and_invalid_transport(self):
         class Fake:

@@ -147,12 +147,9 @@ def observe_command(once: bool, with_model: bool, with_telegram: bool, profile: 
             decisions = None
             if with_model:
                 from shadow.decisions import StructuredDecisions
-                from shadow.model_bedrock import BedrockTransport
+                from shadow.model_openai import configured_transport
 
-                models = {role: os.environ.get(f"SHADOW_{role.upper()}_MODEL", "").strip()
-                          for role in ("risk", "reply", "extraction")}
-                transport = BedrockTransport(region=os.environ.get("SHADOW_AWS_REGION", ""),
-                                             models=models)
+                transport = configured_transport()
                 decisions = StructuredDecisions(transport, storage, settings)
             browser = InstagramBrowser(
                 cdp_url=os.environ.get("SHADOW_CDP_URL", "http://127.0.0.1:9222"),
@@ -223,13 +220,11 @@ def evaluate_command(dataset, split, repeats, with_model, output):
         from shadow.operations import private_destination
         private_destination(output)
         from shadow.decisions import StructuredDecisions
-        from shadow.model_bedrock import BedrockTransport
+        from shadow.model_openai import configured_transport
         from shadow.settings import data_dir, load_settings
         from shadow.storage import open_storage
 
-        models = {role: os.environ.get(f"SHADOW_{role.upper()}_MODEL", "").strip()
-                  for role in ("risk", "reply", "extraction")}
-        transport = BedrockTransport(region=os.environ.get("SHADOW_AWS_REGION", ""), models=models)
+        transport = configured_transport()
         import tempfile
         from shadow.evaluation import write_private_json
 
