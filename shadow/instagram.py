@@ -21,6 +21,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import os
+from pathlib import Path
 from urllib.parse import urlparse
 
 from playwright.async_api import Route, async_playwright
@@ -225,8 +227,22 @@ class InstagramBrowser:
     """`BrowserPort` over a dedicated, already-running Chrome on loopback."""
 
     def __init__(self, cdp_url: str = DEFAULT_CDP_URL,
-                 expected_account: str | None = None) -> None:
+                 expected_account: str | None = None, *,
+                 profile_dir: str | Path | None = None, headless: bool = False) -> None:
         refuse_cdp_url(cdp_url)
+        if headless and profile_dir is None:
+            raise ValueError("Headless mode requires a dedicated app-owned profile")
+        self.profile_dir = Path(profile_dir).expanduser().resolve() if profile_dir else None
+        if self.profile_dir is not None:
+            from shadow.operations import private_destination
+
+            private_destination(self.profile_dir, must_be_new=False)
+            # Never launch with the user's ordinary Chrome profile.
+            forbidden = {"default", "user data", "google-chrome", "chromium", "google", "chrome"}
+            if any(part.casefold() in forbidden for part in self.profile_dir.parts):
+                raise ValueError("Use a dedicated Shadow profile, not a personal browser profile")
+        self.headless = headless
+        self._owned_context = None
         self.cdp_url = cdp_url
         # A comparison value only. Never logged, never returned in a result.
         self._expected_account = expected_account
@@ -241,6 +257,32 @@ class InstagramBrowser:
     async def start(self) -> InboxResult:
         """Bind to the single Instagram tab. Returns a status, never raises."""
         self._pw = await async_playwright().start()
+        if self.profile_dir is not None:
+            try:
+                self.profile_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+                os.chmod(self.profile_dir, 0o700)
+                self._owned_context = await self._pw.chromium.launch_persistent_context(
+                    self.profile_dir, headless=self.headless, viewport={"width": 1280, "height": 900},
+                    locale="en-US", accept_downloads=False, chromium_sandbox=True,
+                )
+                pages = [page for page in self._owned_context.pages if host_allowed(page.url)]
+                if not pages:
+                    self.page = await self._owned_context.new_page()
+                    await self._install_guard()
+                    await self.page.goto(IG_INBOX, wait_until="domcontentloaded")
+                    pages = [self.page]
+                if len(pages) != 1:
+                    return InboxResult("dom_unknown", detail="owned_profile_multiple_instagram_tabs")
+                if self.page is not pages[0]:
+                    self.page = pages[0]
+                    await self._install_guard()
+                failed = await self._check_account()
+                if failed:
+                    return failed
+                return interpret_inbox(await self.page.evaluate(JS_RAW), extra_detail=self._detail())
+            except Exception:
+                await self.close()
+                return InboxResult("dom_unknown", detail="owned_browser_start_failed")
         try:
             self._browser = await self._pw.chromium.connect_over_cdp(self.cdp_url)
         except Exception as exc:
@@ -277,6 +319,9 @@ class InstagramBrowser:
 
     async def close(self) -> None:
         """Stop Playwright only. The owner's browser, context and tabs stay."""
+        if self._owned_context is not None:
+            await self._owned_context.close()
+            self._owned_context = None
         if self._pw:
             await self._pw.stop()
             self._pw = None

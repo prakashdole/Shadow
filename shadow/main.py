@@ -114,7 +114,9 @@ def owner_poll_once_command() -> None:
 @click.option("--once", is_flag=True, help="One snapshot, then stop.")
 @click.option("--with-model", is_flag=True, help="Call explicitly configured models; still never send.")
 @click.option("--with-telegram", is_flag=True, help="Process owner controls in the observer process.")
-def observe_command(once: bool, with_model: bool, with_telegram: bool) -> None:
+@click.option("--profile", type=click.Path(), help="Dedicated app-owned browser profile outside the checkout.")
+@click.option("--headless", is_flag=True, help="Use the app-owned profile without a visible window; login must already exist.")
+def observe_command(once: bool, with_model: bool, with_telegram: bool, profile: str | None, headless: bool) -> None:
     """Run the v2 non-sending observer against a dedicated browser profile."""
     from shadow.instagram import InstagramBrowser
     from shadow.observe import observe_loop
@@ -155,6 +157,7 @@ def observe_command(once: bool, with_model: bool, with_telegram: bool) -> None:
             browser = InstagramBrowser(
                 cdp_url=os.environ.get("SHADOW_CDP_URL", "http://127.0.0.1:9222"),
                 expected_account=expected,
+                profile_dir=profile, headless=headless,
             )
             report = asyncio.run(observe_loop(storage, browser, settings, account_id,
                                               decisions, once=once,
@@ -228,6 +231,36 @@ def evaluate_command(dataset, split, repeats, with_model):
         click.echo(json.dumps(report, sort_keys=True))
     except (ValueError, OSError) as exc:
         raise click.ClickException("Evaluation refused: " + type(exc).__name__) from None
+
+
+@cli.command("browser-login")
+@click.option("--profile", required=True, type=click.Path())
+def browser_login_command(profile):
+    """Open a dedicated visible Chromium profile for manual login/2FA only."""
+    from pathlib import Path
+    from shadow.instagram import InstagramBrowser
+    from playwright.async_api import async_playwright
+
+    try:
+        validated = InstagramBrowser(profile_dir=profile, expected_account="login-only")
+        directory = validated.profile_dir
+        async def login():
+            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chmod(directory, 0o700)
+            async with async_playwright() as playwright:
+                context = await playwright.chromium.launch_persistent_context(
+                    directory, headless=False, viewport={"width": 1280, "height": 900},
+                    locale="en-US", chromium_sandbox=True, accept_downloads=False)
+                try:
+                    page = context.pages[0] if context.pages else await context.new_page()
+                    await page.goto("https://www.instagram.com/", wait_until="domcontentloaded")
+                    await asyncio.to_thread(click.prompt, "Complete login and account settings manually, then press Enter", default="", show_default=False)
+                finally:
+                    await context.close()
+        asyncio.run(login())
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from None
+    click.echo("Dedicated profile saved. This did not send or qualify the account.")
 
 
 @cli.command()
