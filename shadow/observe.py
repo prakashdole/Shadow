@@ -76,6 +76,7 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
             approvals = Approvals(coordinator)
             while True:
                 await notifications.deliver_due()
+                await notifications.deliver_digest()
                 for request in approvals.pending():
                     if request["message_id"] is not None:
                         continue

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import asyncio
 import re
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -12,6 +13,18 @@ from shadow.coordinator import Coordinator
 from shadow.storage import Storage
 
 _THREAD = re.compile(r"[0-9]+\Z")
+
+
+class TelegramUnavailable(RuntimeError):
+    def __init__(self, retry_after=None):
+        super().__init__("Telegram transport unavailable; no command acknowledgement")
+        self.retry_after = retry_after
+
+
+def _retry_hint(result):
+    parameters = result.get("parameters") if type(result) is dict else None
+    delay = parameters.get("retry_after") if type(parameters) is dict else None
+    return delay if type(delay) is int and 0 < delay <= 86400 else None
 
 
 class OwnerCommands:
@@ -252,10 +265,19 @@ class TelegramTransport:
                 raise ValueError("oversized response")
             result = json.loads(raw)
             if result.get("ok") is not True:
-                raise ValueError("Telegram API refused request")
+                raise TelegramUnavailable(_retry_hint(result))
             return result["result"]
+        except TelegramUnavailable:
+            raise
+        except HTTPError as exc:
+            try:
+                payload = exc.read(65536)
+                hint = _retry_hint(json.loads(payload))
+            except (ValueError, OSError):
+                hint = None
+            raise TelegramUnavailable(hint) from None
         except Exception:
-            raise RuntimeError("Telegram transport unavailable; no command acknowledgement") from None
+            raise TelegramUnavailable() from None
 
     def poll_once(self, handler: OwnerCommands) -> int:
         cursor = handler.storage.last_owner_update_id()

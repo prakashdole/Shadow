@@ -47,8 +47,8 @@ class Notifications:
                     f"/ack {alert['id']} acknowledges only; it does not clear the hold.")
             try:
                 await self._send(self.chat_id, text)
-            except RuntimeError:
-                self._retry(alert, now)
+            except RuntimeError as exc:
+                self._retry(alert, now, getattr(exc, "retry_after", None))
                 continue
             current = next(item for item in self.storage.alerts() if item["id"] == alert["id"])
             if current["state"] in ("acknowledged", "resolved"):
@@ -62,10 +62,12 @@ class Notifications:
             self.storage.update_alert_delivery(alert["id"], **fields)
             await self._escalate(alert, now, sent_at or now)
 
-    def _retry(self, alert, now):
+    def _retry(self, alert, now, retry_after=None):
         # Bound retry delays by the existing idle backoff setting.
         delay = min(self.settings.idle_backoff_max,
                     max(1, self.settings.pane_check_interval) * 2 ** min(alert["attempts"], 8))
+        if type(retry_after) is int and retry_after > delay:
+            delay = retry_after
         self.storage.update_alert_delivery(alert["id"], attempts=alert["attempts"] + 1,
                                            next_attempt_at=iso(now + timedelta(seconds=delay)))
 
@@ -76,9 +78,48 @@ class Notifications:
         try:
             await self._send(self.secondary_chat_id,
                              f"Shadow urgent alert #{alert['id']} remains unacknowledged; owner action required.")
-        except RuntimeError:
+        except RuntimeError as exc:
+            self._retry(alert, now, getattr(exc, "retry_after", None))
             return
         self.storage.update_alert_delivery(alert["id"], escalated_at=iso(now))
+
+    async def deliver_digest(self):
+        """Once per local day, with durable retry and inclusion only after delivery.
+
+        A crash after remote acceptance may repeat a digest page; Telegram offers
+        no idempotency key. Local success is never recorded before acceptance.
+        """
+        from zoneinfo import ZoneInfo
+        from shadow.owner import message_pages
+
+        if (self.settings.digest_schedule != "end_of_active_hours" or not self.settings.timezone
+                or not self.settings.active_hours):
+            return
+        now = self.clock.now()
+        local = now.astimezone(ZoneInfo(self.settings.timezone))
+        weekday = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")[local.weekday()]
+        hours = self.settings.active_hours.get(weekday, self.settings.active_hours.get("daily"))
+        if not hours or local.strftime("%H:%M") < hours[1]:
+            return
+        marker_id = self.storage.raise_alert(dedupe_key=f"digest:{local.date().isoformat()}",
+                                             tier="info", reason="scheduled_digest")
+        marker = next(row for row in self.storage.alerts() if row["id"] == marker_id)
+        if marker["state"] == "sent" or (parse_iso(marker["next_attempt_at"]) or now) > now:
+            return
+        included = [row["id"] for row in self.storage.alerts()
+                    if row["tier"] == "info" and not row["digest_included"] and row["reason"] != "scheduled_digest"]
+        text = digest_text(self.storage, now=now, settings=self.settings)
+        try:
+            for page in message_pages(text):
+                await self._send(self.chat_id, page)
+        except RuntimeError as exc:
+            self._retry(marker, now, getattr(exc, "retry_after", None))
+            return
+        with self.storage.transaction():
+            self.storage.update_alert_delivery(marker_id, state="sent", sent_at=iso(now), digest_included=1,
+                                               next_attempt_at=None, attempts=marker["attempts"] + 1)
+            for alert_id in included:
+                self.storage.update_alert_delivery(alert_id, digest_included=1)
 
 
 def digest_text(storage, *, now, settings):
@@ -95,6 +136,10 @@ def digest_text(storage, *, now, settings):
     for work in storage.work_in_states(("held", "owner_active", "awaiting_approval")):
         lines.append(f"Unanswered thread ref={work['conversation_id']}: {work['held_reason'] or work['state']}")
     for alert in storage.alerts():
-        if alert["tier"] == "info" and not alert["digest_included"]:
+        if alert["tier"] == "info" and not alert["digest_included"] and alert["reason"] != "scheduled_digest":
             lines.append(f"Info #{alert['id']}: {alert['reason']}")
+    import json
+    from shadow.quality import metrics
+
+    lines.append("7-day metrics: " + json.dumps(metrics(storage, now), sort_keys=True))
     return "\n".join(lines)

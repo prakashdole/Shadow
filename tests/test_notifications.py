@@ -79,6 +79,36 @@ class NotificationTests(unittest.IsolatedAsyncioTestCase):
         self.storage.raise_alert(dedupe_key="i", tier="info", reason="baseline_unanswered")
         self.assertIn("baseline_unanswered", digest_text(self.storage, now=self.clock.now(), settings=self.settings))
 
+    async def test_digest_delivery_once_and_failed_delivery_keeps_info(self):
+        info = self.storage.raise_alert(dedupe_key="info", tier="info", reason="baseline_unanswered")
+        await self.notifications.deliver_digest()
+        self.assertEqual(self.transport.calls, [])
+        self.clock.current = self.clock.now().replace(hour=23)
+        self.transport.fail = True
+        await self.notifications.deliver_digest()
+        self.assertEqual(next(a for a in self.storage.alerts() if a["id"] == info)["digest_included"], 0)
+        self.transport.fail = False
+        self.clock.advance(300)
+        await self.notifications.deliver_digest()
+        self.assertEqual(len(self.transport.calls), 1)
+        self.assertIn("7-day metrics", self.transport.calls[0]["text"])
+        await self.notifications.deliver_digest()
+        self.assertEqual(len(self.transport.calls), 1)
+        self.assertEqual(next(a for a in self.storage.alerts() if a["id"] == info)["digest_included"], 1)
+
+    async def test_service_retry_hint_is_not_shortened_to_local_backoff(self):
+        from shadow.owner import TelegramUnavailable
+
+        self.storage.raise_alert(dedupe_key="retry", tier="urgent", reason="challenge")
+        def fail(*args, **kwargs):
+            raise TelegramUnavailable(600)
+        self.transport._post = fail
+        await self.notifications.deliver_due()
+        from shadow.storage import parse_iso
+
+        retry = parse_iso(self.storage.alerts()[0]["next_attempt_at"])
+        self.assertEqual((retry - self.clock.now()).total_seconds(), 600)
+
 
 if __name__ == "__main__":
     unittest.main()
