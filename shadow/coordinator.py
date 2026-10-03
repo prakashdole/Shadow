@@ -151,7 +151,9 @@ class Coordinator:
         self.clock = clock or SystemClock()
         self.rng = rng or random.Random()
         self.dry_run = dry_run
-        self.account_id = account_id or self._stored_account_id()
+        self.account_id = account_id
+        if not self.account_id:
+            self.account_id = self._stored_account_id()
         self._dom_unknown_last_alert: str | None = None
 
     # --- runtime state ----------------------------------------------
@@ -159,6 +161,8 @@ class Coordinator:
         runtime = self.storage.get_runtime()
         if runtime and runtime.get("account_id"):
             return runtime["account_id"]
+        if not self.account_id:
+            raise ValueError("account_id is required before the first observation")
         self.storage.set_runtime(
             account_id=self.account_id, mode=self.settings.mode,
             autonomy_scope=self._scope_text(), pause_reason=None, config_digest=None,
@@ -171,6 +175,8 @@ class Coordinator:
 
     @property
     def mode(self) -> str:
+        if self.dry_run:
+            return "observe"
         runtime = self.storage.get_runtime() or {}
         return runtime.get("mode") or self.settings.mode
 
@@ -272,6 +278,9 @@ class Coordinator:
     # --- discovery -------------------------------------------------
     async def tick_discover(self) -> TickReport:
         report = TickReport()
+        if self.paused:
+            report.stopped_reason = self._pause_reason()
+            return report
         result = await self.browser.inbox()
         if result.status in GLOBAL_PAUSE_STATUSES:
             self._global_pause(result.status)
@@ -415,6 +424,8 @@ class Coordinator:
         conversation_id = self.storage.get_or_create_conversation(
             self.account_id, thread_id, label
         )
+        if self.storage.get_work(conversation_id) is None:
+            self.storage.set_work(conversation_id, inbound_revision=0, state="idle")
         if existing is None:
             # A thread seen for the first time is an unknown contact in every
             # mode, and the owner is told once (D22).
@@ -851,7 +862,7 @@ class Coordinator:
         if self.mode == "observe":
             report.note("observe mode: no sends")
             return
-        if not self.caps_allow(conversation_id):
+        if not self.caps_available(conversation_id):
             report.stopped_reason = report.stopped_reason or "send_cap"
             self.storage.raise_alert(
                 dedupe_key="send_cap_exhausted", tier="action", reason="send_cap_exhausted"
@@ -889,7 +900,7 @@ class Coordinator:
                 )
             report.note(f"conversation {conversation_id}: reassessed after new inbound")
             return
-        if result_align.status in ("gap", "ambiguous"):
+        if result_align.status != "ok":
             self._hold(conversation_id, f"align_{result_align.status}", report, tier="action")
             return
         if result.composer_text:
@@ -929,21 +940,23 @@ class Coordinator:
         return pacing.in_active_hours(self.clock.now(), self.settings)
 
     def caps_allow(self, conversation_id: int) -> bool:
-        """Both caps must allow one more, and this CONSUMES one unit of each.
-
-        `try_consume_rates` consumes nothing when either window is exhausted, so
-        a refused burst costs no budget. The consuming form is used once per
-        burst, before the first item; the per-check-point form is
-        `caps_available`, which must not consume.
-        """
+        """Reserve one message attempt from both caps in one transaction."""
         now = self.clock.now()
-        if not self.storage.try_consume_rates("send_account", self.settings.send_cap_account, now):
-            return False
-        if not self.storage.try_consume_rates(
-            f"send_thread:{conversation_id}", self.settings.send_cap_thread, now
-        ):
-            return False
-        return True
+        thread_kind = f"send_thread:{conversation_id}"
+        with self.storage.transaction():
+            if not self.storage.rates_available(
+                "send_account", self.settings.send_cap_account, now
+            ) or not self.storage.rates_available(
+                thread_kind, self.settings.send_cap_thread, now
+            ):
+                return False
+            if not self.storage.try_consume_rates(
+                "send_account", self.settings.send_cap_account, now
+            ) or not self.storage.try_consume_rates(
+                thread_kind, self.settings.send_cap_thread, now
+            ):
+                raise ST.StorageError("send cap changed during reservation")
+            return True
 
     def caps_available(self, conversation_id: int) -> bool:
         """Whether a send would fit inside both caps right now. Reads only."""
@@ -974,9 +987,8 @@ class Coordinator:
                 return False
             if self._owner_active(conversation):
                 return False
-            if not self.caps_available(conversation_id):
-                return False
-            return True
+            return (self.caps_allow(conversation_id) if point == "before_enter"
+                    else self.caps_available(conversation_id))
 
         return check
 

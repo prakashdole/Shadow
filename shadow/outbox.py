@@ -196,7 +196,7 @@ async def _send_one(
 
         # uncertain, or a status this code does not know: treat as uncertain
         # rather than guessing. An unknown status is never a confirmation.
-        reason = f"send_{result.status}"
+        reason = result.error_code or f"send_{result.status}"
         _raise_uncertain(storage, conversation_id, item, reason)
         return ItemOutcome(item_id, item["text"], "uncertain", reason)
 

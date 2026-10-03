@@ -49,7 +49,7 @@ def settings(mode: str = "autonomous", **overrides) -> Settings:
     return Settings(**base)
 
 
-class CoordinatorCase(unittest.TestCase):
+class CoordinatorCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.dir = Path(tempfile.mkdtemp(prefix="shadow-coord-"))
         self.addCleanup(self._cleanup)
@@ -79,7 +79,8 @@ class CoordinatorCase(unittest.TestCase):
         return Coordinator(
             self.storage, self.browser, self.decisions,
             overrides.pop("settings", self.settings),
-            clock=self.clock, rng=self.rng, account_id=ACCOUNT, **overrides,
+            clock=self.clock, rng=overrides.pop("rng", self.rng), account_id=ACCOUNT,
+            **overrides,
         )
 
     # --- helpers ---------------------------------------------------
@@ -103,7 +104,19 @@ class CoordinatorCase(unittest.TestCase):
         found = self.storage.alerts()
         return [a for a in found if tier is None or a["tier"] == tier]
 
+    def seed_history(self, conversation_id: int, sender: str = "contact", text: str = "hi") -> None:
+        self.storage.add_event(
+            conversation_id=conversation_id, sender=sender, kind="text", text=text,
+            observed_at=ST.iso(self.clock.now()), source="dom",
+            origin="owner_authored" if sender == "owner" else "unknown",
+        )
+        self.storage.mark_baseline_done(conversation_id)
+
     def queue_due_send(self, conversation_id: int, *texts: str) -> None:
+        if not self.storage.get_events(conversation_id):
+            self.seed_history(conversation_id)
+        if self.storage.get_work(conversation_id) is None:
+            self.storage.set_work(conversation_id, inbound_revision=1, state="due")
         decision = self.storage.add_decision(
             conversation_id=conversation_id, source_revision=1, record_json="{}", versions_json="{}",
             status="queued",
@@ -118,6 +131,18 @@ class CoordinatorCase(unittest.TestCase):
             conversation_id, state="due", due_at=ST.iso(self.clock.now()),
             first_pending_at=work["first_pending_at"] if work else ST.iso(self.clock.now()),
         )
+
+
+class TestAccountBinding(CoordinatorCase):
+    def test_fresh_runtime_requires_an_account_identity(self) -> None:
+        with self.assertRaisesRegex(ValueError, "account_id is required"):
+            Coordinator(self.storage, self.browser, self.decisions, self.settings)
+        self.assertIsNone(self.storage.get_runtime())
+
+    async def test_reuses_a_persisted_account_identity(self) -> None:
+        await self.coordinator.startup()
+        resumed = Coordinator(self.storage, self.browser, self.decisions, self.settings)
+        self.assertEqual(resumed.account_id, ACCOUNT)
 
 
 # --- S02 / D40: baseline and overlap -----------------------------------
@@ -275,8 +300,6 @@ class TestDiscovery(CoordinatorCase):
         report = await self.coordinator.tick_discover()
         self.assertEqual(report.stopped_reason, "dom_unknown")
         self.assertEqual(report.rows, 0)
-        self.assertEqual(self.storage.get_or_create_conversation(ACCOUNT, THREAD_A, None),
-                         self.storage.get_or_create_conversation(ACCOUNT, THREAD_A, None))
         self.assertEqual(self.storage.table_counts()["conversations"], 0)
         self.assertTrue(any(a["reason"] == "dom_unknown" for a in self.alerts("action")))
 
@@ -487,13 +510,12 @@ class TestUnknownContactsC11(CoordinatorCase):
 class TestModesC10(CoordinatorCase):
     def prepare_pending(self, thread_id: str = THREAD_A, label: str = "Test One"):
         conversation = self.conversation(thread_id, label, "known")
-        self.storage.mark_baseline_done(conversation)
+        self.seed_history(conversation, text="old")
         self.inbox(row(0, label=label))
         self.script_reads(thread_id, event(0, "contact", "old"))
         return conversation
 
     async def drive_new_inbound(self, conversation: int, thread_id: str, label: str):
-        self.coordinator = self.build()
         self.inbox(row(0, label=label))
         self.script_reads(
             thread_id, event(0, "contact", "old"), event(1, "contact", "kal milte hai?")
@@ -645,16 +667,19 @@ class TestPacingAndCoalescingC01(CoordinatorCase):
 
     async def test_coalescing_pushes_the_due_time_out_within_the_cap(self) -> None:
         conversation = self.conversation()
-        self.storage.mark_baseline_done(conversation)
+        self.seed_history(conversation, sender="owner", text="baseline")
         self.inbox(row(0))
-        self.script_reads(THREAD_A, event(0, "contact", "one"))
+        self.script_reads(THREAD_A, event(0, "owner", "baseline"), event(1, "contact", "one"))
         await self.coordinator.tick_discover()
         first_due = self.work(conversation)["due_at"]
 
         self.clock.advance(20)
         self.coordinator = self.build()
         self.inbox(row(0))
-        self.script_reads(THREAD_A, event(0, "contact", "one"), event(1, "contact", "two"))
+        self.script_reads(
+            THREAD_A, event(0, "owner", "baseline"), event(1, "contact", "one"),
+            event(2, "contact", "two"),
+        )
         await self.coordinator.tick_discover()
         second_due = self.work(conversation)["due_at"]
         self.assertGreater(second_due, first_due)
@@ -662,9 +687,9 @@ class TestPacingAndCoalescingC01(CoordinatorCase):
 
     async def test_the_due_time_never_exceeds_the_coalesce_cap(self) -> None:
         conversation = self.conversation()
-        self.storage.mark_baseline_done(conversation)
+        self.seed_history(conversation, sender="owner", text="baseline")
         self.inbox(row(0))
-        self.script_reads(THREAD_A, event(0, "contact", "one"))
+        self.script_reads(THREAD_A, event(0, "owner", "baseline"), event(1, "contact", "one"))
         await self.coordinator.tick_discover()
         first_pending = ST.parse_iso(self.work(conversation)["first_pending_at"])
         # A long stream of inbound, each read after a long wait.
@@ -673,9 +698,9 @@ class TestPacingAndCoalescingC01(CoordinatorCase):
             self.coordinator = self.build()
             self.inbox(row(0))
             self.script_reads(
-                THREAD_A, *[
-                    event(position, "contact", f"msg {position}") for position in range(index)
-                ]
+                THREAD_A, event(0, "owner", "baseline"), event(1, "contact", "one"),
+                *[event(position + 1, "contact", f"msg {position}")
+                  for position in range(2, index + 1)],
             )
             await self.coordinator.tick_discover()
         due = ST.parse_iso(self.work(conversation)["due_at"])
@@ -687,11 +712,11 @@ class TestPacingAndCoalescingC01(CoordinatorCase):
 
     async def test_a_due_time_outside_active_hours_moves_to_the_next_window(self) -> None:
         conversation = self.conversation()
-        self.storage.mark_baseline_done(conversation)
+        self.seed_history(conversation, sender="owner", text="baseline")
         self.clock.current = LATE_NIGHT
         self.coordinator = self.build()
         self.inbox(row(0))
-        self.script_reads(THREAD_A, event(0, "contact", "one"))
+        self.script_reads(THREAD_A, event(0, "owner", "baseline"), event(1, "contact", "one"))
         await self.coordinator.tick_discover()
         due = ST.parse_iso(self.work(conversation)["due_at"])
         self.assertGreater(due, LATE_NIGHT)
@@ -713,7 +738,7 @@ class TestPacingAndCoalescingC01(CoordinatorCase):
 class TestActiveHoursC07(CoordinatorCase):
     def due(self, conversation: int):
         self.queue_due_send(conversation, "hello")
-        self.script_reads(THREAD_A, event(0, "contact", "hi"), event(1, "owner", "hello"))
+        self.script_reads(THREAD_A, event(0, "contact", "hi"))
 
     async def test_nothing_sends_outside_active_hours(self) -> None:
         conversation = self.conversation()
@@ -784,7 +809,7 @@ class TestTakeoverC08(CoordinatorCase):
         self.storage.mark_baseline_done(conversation)
         self.queue_due_send(conversation, "shadow reply")
         self.browser.queue(SendResult(status="confirmed", thread_id=THREAD_A))
-        self.script_reads(THREAD_A, event(0, "contact", "hi"), event(1, "owner", "hello"))
+        self.script_reads(THREAD_A, event(0, "contact", "hi"))
         await self.coordinator.tick_due()
         # A later read that sees our own message back must not read as the owner
         # taking over.
@@ -792,14 +817,14 @@ class TestTakeoverC08(CoordinatorCase):
         self.inbox(row(0))
         self.script_reads(
             THREAD_A,
-            event(0, "contact", "hi"), event(1, "owner", "hello"), event(2, "owner", "shadow reply"),
+            event(0, "contact", "hi"), event(1, "owner", "shadow reply"),
         )
         await self.coordinator.tick_discover()
         self.assertIsNone(self.storage.get_conversation(conversation)["owner_active_until"])
 
     async def test_drafting_resumes_when_the_takeover_window_ends(self) -> None:
         conversation = self.conversation()
-        self.storage.mark_baseline_done(conversation)
+        self.seed_history(conversation)
         self.inbox(row(0))
         self.script_reads(
             THREAD_A, event(0, "contact", "hi"), event(1, "owner", "owner typed this"),
@@ -819,7 +844,7 @@ class TestTakeoverC08(CoordinatorCase):
 
     async def test_resume_contact_ends_the_window_early(self) -> None:
         conversation = self.conversation()
-        self.storage.mark_baseline_done(conversation)
+        self.seed_history(conversation)
         self.inbox(row(0))
         self.script_reads(
             THREAD_A, event(0, "contact", "hi"), event(1, "owner", "owner typed this"),
@@ -833,7 +858,7 @@ class TestTakeoverC08(CoordinatorCase):
         conversation = self.conversation()
         check = self.coordinator._check_for(conversation)
         self.assertTrue(await check("before_type"))
-        self.coordinator._takeover(conversation, type("R", (), {"note": lambda *a: None})())
+        await self.coordinator._takeover(conversation, type("R", (), {"note": lambda *a: None})())
         self.assertFalse(await check("before_type"))
 
 
@@ -850,14 +875,14 @@ class TestResponsivenessC02(CoordinatorCase):
             first = self.conversation(THREAD_A, "Test One", "known")
             second = self.conversation(THREAD_B, "Test Two", "known")
             for conversation in (first, second):
-                self.storage.mark_baseline_done(conversation)
+                self.seed_history(conversation, sender="owner", text="old")
             self.decisions = FakeDecisions(
                 assess=[outcome(risk(), delay=5.0), outcome(risk())]
             )
             self.coordinator = self.build()
             self.inbox(row(0, label="Test One"), row(1, label="Test Two"))
-            self.script_reads(THREAD_A, event(0, "contact", "hi"))
-            self.script_reads(THREAD_B, event(0, "contact", "hi"))
+            self.script_reads(THREAD_A, event(0, "owner", "old"), event(1, "contact", "hi"))
+            self.script_reads(THREAD_B, event(0, "owner", "old"), event(1, "contact", "hi"))
             await self.coordinator.tick_discover()
             self.assertEqual(self.work(first)["state"], "held")
             self.assertEqual(self.work(first)["held_reason"], "assessment_timeout")
@@ -875,7 +900,7 @@ class TestResponsivenessC02(CoordinatorCase):
             first = self.conversation(THREAD_A, "Test One", "known")
             second = self.conversation(THREAD_B, "Test Two", "known")
             for conversation in (first, second):
-                self.storage.mark_baseline_done(conversation)
+                self.seed_history(conversation, sender="owner", text="old")
 
             class Pausing(FakeDecisions):
                 async def assess(self, data):
@@ -884,11 +909,11 @@ class TestResponsivenessC02(CoordinatorCase):
                     return await super().assess(data)
 
             self.decisions = Pausing()
-            self.decisions.coordinator_ref = self.coordinator
             self.coordinator = self.build()
+            self.decisions.coordinator_ref = self.coordinator
             self.inbox(row(0, label="Test One"), row(1, label="Test Two"))
-            self.script_reads(THREAD_A, event(0, "contact", "hi"))
-            self.script_reads(THREAD_B, event(0, "contact", "hi"))
+            self.script_reads(THREAD_A, event(0, "owner", "old"), event(1, "contact", "hi"))
+            self.script_reads(THREAD_B, event(0, "owner", "old"), event(1, "contact", "hi"))
             await self.coordinator.tick_discover()
             self.assertTrue(self.coordinator.paused)
             self.assertEqual(self.work(second)["state"], "pending")
@@ -902,7 +927,7 @@ class TestResponsivenessC02(CoordinatorCase):
 class TestCapsAndRestartC03(CoordinatorCase):
     def due(self, conversation: int, thread_id: str = THREAD_A):
         self.queue_due_send(conversation, "hello")
-        self.script_reads(thread_id, event(0, "contact", "hi"), event(1, "owner", "hello"))
+        self.script_reads(thread_id, event(0, "contact", "hi"))
 
     async def test_the_account_cap_holds_at_the_boundary(self) -> None:
         from shadow.contracts import SendResult
@@ -933,16 +958,40 @@ class TestCapsAndRestartC03(CoordinatorCase):
         self.assertEqual(self.browser.sent, [])
         self.assertEqual(report.stopped_reason, "send_cap")
 
-    async def test_a_check_point_does_not_consume_the_cap(self) -> None:
+    async def test_non_submit_checks_do_not_consume_the_cap(self) -> None:
         conversation = self.conversation()
         check = self.coordinator._check_for(conversation)
         for _ in range(10):
             await check("before_type")
-            await check("before_enter")
             await check("between_items")
         self.assertEqual(
             self.storage.usage_count("send_account", 3600, self.clock.now()), 0
         )
+
+    async def test_a_two_bubble_burst_reserves_each_attempt_separately(self) -> None:
+        self.coordinator = self.build(settings=settings(
+            send_cap_account=((1, 3600),), send_cap_thread=((2, 3600),)
+        ))
+        conversation = self.conversation()
+        self.queue_due_send(conversation, "one", "two")
+        self.script_reads(THREAD_A, event(0, "contact", "hi"))
+        report = await self.coordinator.tick_due()
+        self.assertEqual(report.sent, 1)
+        self.assertEqual([text for _, text in self.browser.sent], ["one"])
+        self.assertEqual([item["state"] for item in self.storage.outbox_items(conversation)],
+                         ["confirmed", "cancelled"])
+        self.assertEqual(self.storage.usage_count("send_account", 3600, self.clock.now()), 1)
+        self.assertEqual(self.storage.usage_count(f"send_thread:{conversation}", 3600,
+                                                  self.clock.now()), 1)
+
+    def test_exhausted_thread_cap_does_not_charge_account(self) -> None:
+        conversation = self.conversation()
+        for _ in range(self.settings.send_cap_thread[0][0]):
+            self.storage.try_consume_rates(
+                f"send_thread:{conversation}", self.settings.send_cap_thread, self.clock.now()
+            )
+        self.assertFalse(self.coordinator.caps_allow(conversation))
+        self.assertEqual(self.storage.usage_count("send_account", 3600, self.clock.now()), 0)
 
     async def test_a_restart_preserves_due_work_caps_and_pause(self) -> None:
         conversation = self.conversation()
@@ -1000,11 +1049,12 @@ class TestNoDuplicateRepliesC04(CoordinatorCase):
         conversation = self.conversation()
         self.storage.mark_baseline_done(conversation)
         self.queue_due_send(conversation, "haan, 7 pm?")
-        self.script_reads(THREAD_A, event(0, "contact", "hi"), event(1, "owner", "haan, 7 pm?"))
+        self.script_reads(THREAD_A, event(0, "contact", "hi"))
         self.browser.queue(SendResult(status="confirmed", thread_id=THREAD_A))
+        await self.coordinator.tick_due()
         for _ in range(4):
             self.coordinator = self.build()
-            self.inbox(row(0, unread_hint=True))
+            self.inbox(row(0, unread=True))
             self.script_reads(
                 THREAD_A, event(0, "contact", "hi"), event(1, "owner", "haan, 7 pm?")
             )
@@ -1019,7 +1069,6 @@ class TestNoDuplicateRepliesC04(CoordinatorCase):
         # The contact says something else before the draft goes out.
         self.script_reads(
             THREAD_A, event(0, "contact", "hi"), event(1, "contact", "are you there"),
-            event(2, "owner", "haan, 7 pm?"),
         )
         report = await self.coordinator.tick_due()
         self.assertEqual(self.browser.sent, [])
@@ -1046,7 +1095,8 @@ class TestNoDuplicateRepliesC04(CoordinatorCase):
         self.storage.update_work(conversation, state="drafted")
         self.inbox(row(0))
         self.script_reads(
-            THREAD_A, event(0, "contact", "one"), event(1, "contact", "two"),
+            THREAD_A, event(0, "contact", "hi"), event(1, "contact", "one"),
+            event(2, "contact", "two"),
         )
         await self.coordinator.tick_discover()
         self.assertEqual(self.storage.outbox_items(conversation)[0]["state"], "cancelled")
@@ -1074,8 +1124,7 @@ class TestDryRunC05(CoordinatorCase):
             clock=self.clock, rng=self.rng, account_id=ACCOUNT, dry_run=True,
         )
         self.script_reads(THREAD_A, event(0, "contact", "hi"), event(1, "owner", "hello"))
-        with self.assertRaises(RuntimeError):
-            await coordinator.tick_due()
+        await coordinator.tick_due()
         self.assertEqual(self.browser.sent, [], "the dry run must not type")
         copy.close()
 
@@ -1113,8 +1162,9 @@ class TestOwnerCommandD08(CoordinatorCase):
         from shadow.contracts import SendResult
 
         conversation = self.conversation()
+        self.seed_history(conversation)
         self.coordinator.enqueue_owner_send(conversation, "hello owner")
-        self.script_reads(THREAD_A, event(0, "contact", "hi"), event(1, "owner", "hello owner"))
+        self.script_reads(THREAD_A, event(0, "contact", "hi"))
         self.browser.queue(SendResult(status="confirmed", thread_id=THREAD_A))
         report = await self.coordinator.tick_due()
         self.assertEqual(report.sent, 1)

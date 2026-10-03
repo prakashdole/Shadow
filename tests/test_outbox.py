@@ -31,7 +31,7 @@ NOW = datetime(2026, 9, 28, 10, 0, tzinfo=UTC)
 THREAD = "100200300"
 
 
-class OutboxCase(unittest.TestCase):
+class OutboxCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.dir = Path(tempfile.mkdtemp(prefix="shadow-outbox-"))
         self.addCleanup(self._cleanup)
@@ -280,7 +280,7 @@ class TestCheckPointsD06(OutboxCase):
             calls["n"] += 1
             # allow the first item's before_type/before_enter, then refuse the
             # between_items check that precedes item two
-            return calls["n"] <= 2
+            return calls["n"] <= 3
 
         report = await OB.send_items(
             self.storage, self.browser, self.conversation, items, check, self.clock
@@ -374,7 +374,9 @@ class TestBoundedRetry(OutboxCase):
 
 class TestOwnerCommandD08(OutboxCase):
     async def test_an_owner_command_uses_the_same_path_and_skips_only_the_delay(self) -> None:
-        decision, item = OB.enqueue_owner_send(self.storage, self.conversation, "  hello owner  ")
+        decision, item = OB.enqueue_owner_send(
+            self.storage, self.conversation, "  hello owner  ", now=self.clock.now()
+        )
         stored = self.storage.get_outbox_item(item)
         self.assertEqual(stored["authority"], "owner_command")
         self.assertEqual(stored["text"], "hello owner")

@@ -154,7 +154,9 @@ class FakeBrowser:
     # --- helpers -----------------------------------------------------
     def _read_for(self, key) -> C.ReadResult:
         thread_id = f"1002003{key:02d}" if isinstance(key, int) else key
-        if thread_id in self.reads:
+        if key in self.reads:
+            scripted = self.reads[key]
+        elif thread_id in self.reads:
             scripted = self.reads[thread_id]
         elif self._default_read is not None:
             scripted = self._default_read
@@ -162,8 +164,6 @@ class FakeBrowser:
             scripted = read(thread_id)
         if callable(scripted):
             scripted = scripted()
-        if scripted.thread_id is None:
-            scripted = C.ReadResult(**{**scripted.__dict__, "thread_id": thread_id})
         return scripted
 
     def set_default_read(self, result: C.ReadResult | None) -> None:
@@ -219,19 +219,21 @@ class FakeDecisions:
 
     async def assess(self, data: C.DecisionInput) -> C.RoleOutcome:
         self.calls.append(("assess", data.conversation_id))
-        return self._next(self._assess, "risk", data)
+        return await self._next(self._assess, "risk", data)
 
     async def draft(self, data: C.DecisionInput, assessment: C.RiskAssessment) -> C.RoleOutcome:
         self.calls.append(("draft", data.conversation_id))
-        return self._next(self._draft, "reply", data)
+        return await self._next(self._draft, "reply", data)
 
     async def extract(self, data: C.DecisionInput) -> C.RoleOutcome:
         self.calls.append(("extract", data.conversation_id))
-        return self._next(self._extract, "extraction", data)
+        return await self._next(self._extract, "extraction", data)
 
     @staticmethod
     async def _next(queue, role, data):
-        scripted = queue.pop(0) if queue else _ScriptedOutcome(risk(), role, None, 0.0)
+        defaults = {"risk": risk, "reply": lambda: draft("haan, 7 pm?"),
+                    "extraction": C.FactProposal}
+        scripted = queue.pop(0) if queue else _ScriptedOutcome(defaults[role](), role, None, 0.0)
         if scripted.delay:
             await asyncio.sleep(scripted.delay)
         if scripted.failure is not None:
