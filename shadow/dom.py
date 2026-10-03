@@ -226,9 +226,12 @@ JS_RAW = r"""() => {
                 const quote = node.previousElementSibling;
                 if (!quote || quote.querySelector('[role="article"]')) continue;
                 const marker = quote.previousElementSibling;
-                if (!marker || !/replied to (you|yourself)|you replied to/i.test(marker.innerText || '')) continue;
+                if (!marker || marker.querySelector('[role="article"]')) continue;
+                const markerText = (marker.innerText || '').replace(/\s+/g, ' ').trim();
+                if (!/^(?:.{1,100} replied to (?:you|yourself)|you replied to .{1,100})(?: · \d+[smhdw])?$/i.test(markerText)) continue;
                 const label = mediaOf(quote);
                 const text = leavesOf(quote).map(textOf).filter(Boolean).join(' ');
+                if (!label && /\breacted\b|liked a message|^seen\b/i.test(text)) continue;
                 replyTo = label ? '[quoted ' + label + ']' : text || null;
             }
             const own = leavesOf(art)
