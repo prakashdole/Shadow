@@ -669,6 +669,7 @@ class Coordinator:
             self.storage.update_work(conversation_id, state="idle", held_reason=None)
             return
         self.storage.update_work(conversation_id, state="assessing")
+        started_mode = self.mode
         data = DecisionInput(
             conversation_id=conversation_id,
             contact_status=conversation["contact_status"],
@@ -685,6 +686,8 @@ class Coordinator:
         )
         report.assessed += 1
         assessed = await self._call(self.decisions.assess(data), conversation_id, "assess")
+        if not self._response_current(conversation_id, work, started_mode, report):
+            return
         if assessed is None:
             self._hold(conversation_id, "assessment_timeout", report, tier="action")
             return
@@ -692,7 +695,7 @@ class Coordinator:
             self._hold(conversation_id, f"assessment_{assessed.failure or 'invalid_output'}", report, tier="action")
             return
         assessment = assessed.value
-        decision_id = self._record_decision(conversation_id, work, "recorded", {
+        assessment_record = {
             "assessment": {
                 "risk": assessment.risk,
                 "reason_code": assessment.reason_code,
@@ -700,7 +703,9 @@ class Coordinator:
                 "signals": sorted(assessment.signals),
                 "evidence_event_ids": list(assessment.evidence_event_ids),
             }
-        })
+        }
+        decision_id = self._record_decision(conversation_id, work, "recorded",
+                                           assessment_record, assessed.versions)
         if assessment.action_hint == "urgent":
             self.storage.raise_alert(
                 dedupe_key=f"risk_{assessment.risk}:{conversation_id}:{work['inbound_revision']}",
@@ -726,6 +731,9 @@ class Coordinator:
         drafted = await self._call(
             self.decisions.draft(data, assessment), conversation_id, "draft"
         )
+        if not self._response_current(conversation_id, work, started_mode, report):
+            self.storage.set_decision_status(decision_id, "superseded")
+            return
         if drafted is None:
             self._hold(conversation_id, "draft_timeout", report, tier="action")
             return
@@ -736,11 +744,25 @@ class Coordinator:
         if (reply.action not in ("reply", "skip") or
                 (reply.action == "skip") != (not reply.messages) or
                 len(reply.messages) > self.settings.burst_max_items or
-                sum(len(m) for m in reply.messages) > self.settings.reply_max_chars or
                 any(not isinstance(m, str) or not m.strip() or
-                    len(m) > self.settings.bubble_max_chars for m in reply.messages)):
+                    len(m) > self.settings.bubble_max_chars for m in reply.messages) or
+                sum(len(m) for m in reply.messages) > self.settings.reply_max_chars):
             self._hold(conversation_id, "draft_invalid_output", report, tier="action")
             return
+        # Records stay immutable. Keep the risk-only record, then append the
+        # complete validated decision that approvals and the digest can read.
+        self.storage.set_decision_status(decision_id, "done")
+        decision_id = self._record_decision(
+            conversation_id, work, "recorded", assessment_record | {
+                "reply": {
+                    "action": reply.action, "reason_code": reply.reason_code,
+                    "messages": list(reply.messages),
+                    "evidence_event_ids": list(reply.evidence_event_ids),
+                    "used_memory_ids": list(reply.used_memory_ids),
+                },
+                "usage": {"risk": assessed.usage, "reply": drafted.usage},
+            }, drafted.versions,
+        )
         if reply.action == "skip":
             self.storage.set_decision_status(decision_id, "done")
             self.storage.update_work(conversation_id, state="idle", held_reason=None)
@@ -755,14 +777,26 @@ class Coordinator:
         # messages one decision may cover.
         return self.settings.burst_max_items
 
+    def _response_current(self, conversation_id: int, started: dict,
+                          started_mode: str, report: TickReport) -> bool:
+        current = self.storage.get_work(conversation_id)
+        if not current or any(current[key] != started[key]
+                              for key in ("inbound_revision", "cancel_generation")):
+            report.note("discarded stale model response")
+            return False
+        if self.paused or self.mode != started_mode:
+            self._hold(conversation_id, "model_context_changed", report, tier=None)
+            return False
+        return True
+
     def _record_decision(
-        self, conversation_id: int, work: dict, status: str, record: dict
+        self, conversation_id: int, work: dict, status: str, record: dict, versions=None
     ) -> int:
         return self.storage.add_decision(
             conversation_id=conversation_id,
             source_revision=int(work["inbound_revision"]),
             record_json=json.dumps(record, sort_keys=True),
-            versions_json="{}",
+            versions_json=json.dumps(versions or {}, sort_keys=True),
             status=status,
         )
 
