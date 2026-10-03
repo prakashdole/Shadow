@@ -55,7 +55,8 @@ _SEP_TEXT = re.compile(
     r"|\d{1,2}\s+[a-z]{3,9},?\s+\d{1,2}:\d{2}"
     r"|[a-z]{3,9}\s+\d{1,2},?\s+\d{1,2}:\d{2}"
     r"|today|yesterday|earlier"
-    r")$",
+    r"|\d{1,2}:\d{2}"
+    r")(?:\s*[ap]m)?$",
     re.I,
 )
 _REACTION_TEXT = re.compile(r"\breacted\b|\bliked a message\b|\byou reacted\b", re.I)
@@ -66,6 +67,7 @@ _SEEN_TEXT = re.compile(r"^seen(?: by .*| just now)?$", re.I)
 _UNAVAILABLE = re.compile(r"^(reel|post|story) unavailable$", re.I)
 _AGE_TAIL = re.compile(r"(?:\s*·\s*|\s+)\d+[smhdw]\s*$", re.I)
 _UNREAD_TOKEN = re.compile(r"(^|\s)unread(\s|$)", re.I)
+_DELIVERY_NOTICE = re.compile(r"^this account can.?t receive your message\b", re.I)
 
 _OWNER_LAST = re.compile(r"^you:", re.I)
 _OWNER_SENT = re.compile(r"^you sent\b", re.I)
@@ -156,22 +158,27 @@ JS_RAW = r"""() => {
     const vw = document.documentElement.clientWidth;
     let pane = null;
     for (const el of document.querySelectorAll('div')) {
-        if (el.scrollHeight <= el.clientHeight + 40) continue;
         if (el.clientHeight < 200) continue;
+        if (!/^(auto|scroll)$/.test(getComputedStyle(el).overflowY)) continue;
         const r = el.getBoundingClientRect();
         if (r.left < vw * 0.15) continue;
+        if (list && list.contains(el)) continue;
         if (!pane || r.width > pane.getBoundingClientRect().width) pane = el;
     }
     OUT.pane_present = !!pane;
     if (pane) {
         const pr = pane.getBoundingClientRect();
         OUT.pane = {left: pr.left, right: pr.right, width: pr.width};
-        OUT.at_start = pane.scrollTop <= 2;
+        // Instagram's column-reverse starts at zero at the NEWEST message.
+        // Its virtualized upper edge is not evidence of full history either.
+        OUT.at_start = getComputedStyle(pane).flexDirection !== 'column-reverse'
+            && pane.scrollTop <= 2;
 
         // Header evidence: the strip above the message list, right of the list.
         for (const a of document.querySelectorAll('a[href]')) {
             const r = a.getBoundingClientRect();
             if (r.width === 0 && r.height === 0) continue;
+            if (pane.contains(a) || (list && list.contains(a))) continue;
             if (r.left < vw * 0.15) continue;
             if (r.top > pr.top + 140) continue;
             const href = a.getAttribute('href') || '';
@@ -182,6 +189,11 @@ JS_RAW = r"""() => {
 
         // Media: a card is a role=button wrapper, or a direct media link.
         const mediaOf = art => {
+            for (const icon of art.querySelectorAll('svg[aria-label], svg title')) {
+                const label = icon.getAttribute('aria-label') || icon.textContent || '';
+                if (/^(Clip|Reel)$/i.test(label.trim())) return 'reel';
+                if (/^Post$/i.test(label.trim())) return 'post';
+            }
             const direct = art.querySelector('a[href*="/reel/"], a[href*="/tv/"], a[href*="/p/"]');
             if (direct) {
                 const h = direct.getAttribute('href') || '';
@@ -210,6 +222,15 @@ JS_RAW = r"""() => {
             const own = leavesOf(art)
                 .filter(el => !el.closest('[role="blockquote"]'))
                 .map(textOf).filter(Boolean);
+            // Large emoji-only bubbles have no dir=auto. Their labelled
+            // role=none content is still text, not an unsupported empty card.
+            if (!own.length) {
+                const labelled = document.getElementById(art.getAttribute('aria-labelledby'));
+                if (labelled && art.contains(labelled) && labelled.getAttribute('role') === 'none') {
+                    const text = textOf(labelled);
+                    if (text) own.push(text);
+                }
+            }
             OUT.articles.push({
                 left: g.left, width: g.width, centre: g.centre, laid: g.laid,
                 top: Math.round(art.getBoundingClientRect().top),
@@ -296,7 +317,8 @@ def same_thread(left: str | None, right: str | None) -> bool:
 
 def strip_age(text: str) -> str:
     """Remove the trailing age token and the bare '·' separator from a preview."""
-    t = _AGE_TAIL.sub("", normalize(text))
+    t = re.sub(r"\s+Unread$", "", normalize(text), flags=re.I)
+    t = _AGE_TAIL.sub("", t)
     return t.rstrip("·").strip()
 
 
@@ -313,6 +335,8 @@ def classify_preview(preview: str) -> str:
     """owner_last | reaction_to_owner | attachment_in | text_in | unknown."""
     t = normalize(preview)
     if not t:
+        return "unknown"
+    if _DELIVERY_NOTICE.match(t):
         return "unknown"
     if _OWNER_LAST.match(t) or _OWNER_SENT.match(t):
         return "owner_last"

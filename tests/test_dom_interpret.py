@@ -93,6 +93,10 @@ class PreviewTest(unittest.TestCase):
         self.assertEqual(strip_age("chalo·5m"), "chalo")
         self.assertEqual(strip_age("chalo · 3d"), "chalo")
         self.assertEqual(strip_age("chalo"), "chalo")
+        self.assertEqual(strip_age("Reacted 👍 to your message · 14m Unread"),
+                         "Reacted 👍 to your message")
+        self.assertEqual(classify_preview("This account can't receive your message because of restrictions."),
+                         "unknown")
 
     def test_unread_hint_is_inferred_and_labelled_as_such(self) -> None:
         r = interpret_inbox(raw(rows=[
@@ -123,7 +127,7 @@ class PreviewTest(unittest.TestCase):
 
 class SeparatorAndOutsideTest(unittest.TestCase):
     def test_both_separator_formats_are_dropped_by_text(self) -> None:
-        for sep in ("12 Sep, 3:04", "Tue 12:03", "Today", "Yesterday"):
+        for sep in ("12 Sep, 3:04", "Tue 12:03", "Thu 4:58 PM", "7:04\u202fPM", "Today", "Yesterday"):
             with self.subTest(sep=sep):
                 r = interpret_read(build([
                     ("a", "hello", "contact"),

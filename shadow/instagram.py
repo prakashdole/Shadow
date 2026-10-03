@@ -91,8 +91,8 @@ _JS_PANE_CENTRE = r"""() => {
     const vw = document.documentElement.clientWidth;
     let pane = null;
     for (const el of document.querySelectorAll('div')) {
-        if (el.scrollHeight <= el.clientHeight + 40) continue;
         if (el.clientHeight < 200) continue;
+        if (!/^(auto|scroll)$/.test(getComputedStyle(el).overflowY)) continue;
         const r = el.getBoundingClientRect();
         if (r.left < vw * 0.15) continue;
         if (!pane || r.width > pane.getBoundingClientRect().width) pane = el;
@@ -276,6 +276,7 @@ class InstagramBrowser:
                 if self.page is not pages[0]:
                     self.page = pages[0]
                     await self._install_guard()
+                await self._wait_readable()
                 failed = await self._check_account()
                 if failed:
                     return failed
@@ -311,6 +312,7 @@ class InstagramBrowser:
         await self._install_guard()
         log.info("bound to the single instagram.com tab (identity never logged)")
 
+        await self._wait_readable()
         failed = await self._check_account()
         if failed:
             return failed
@@ -385,6 +387,31 @@ class InstagramBrowser:
 
     # --- navigation --------------------------------------------------
 
+    async def _wait_readable(self, *, thread: bool = False) -> bool:
+        """Wait for stable rendered structure, not just an SPA URL change."""
+        from shadow.dom import page_status
+
+        deadline = asyncio.get_running_loop().time() + 15
+        previous = None
+        stable = 0
+        while asyncio.get_running_loop().time() < deadline:
+            self._assert_on_site()
+            raw = await self.page.evaluate(JS_RAW)
+            if page_status(raw.get("path", "")):
+                return True
+            ready = bool(raw.get("list_present"))
+            if thread:
+                ready = (ready and raw.get("pane_present") and
+                         all(a.get("laid") for a in raw.get("articles", [])))
+            signature = (raw.get("path"), repr(raw.get("rows")),
+                         repr(raw.get("articles")) if thread else "")
+            stable = stable + 1 if ready and signature == previous else 0
+            if stable >= 4:
+                return True
+            previous = signature if ready else None
+            await asyncio.sleep(0.25)
+        return False
+
     async def _goto(self, url: str) -> int:
         check_url(url)                      # refuse off-site before requesting
         self._offsite = None
@@ -411,6 +438,7 @@ class InstagramBrowser:
         if "/direct/" in (self.page.url or "") and raw.get("list_present"):
             return interpret_inbox(raw, extra_detail=self._detail())
         navigations = await self._goto(IG_INBOX)
+        await self._wait_readable()
         failed = await self._check_account()
         if failed:
             return failed
@@ -452,6 +480,9 @@ class InstagramBrowser:
             return ReadResult(status="dom_unknown", navigations_used=1,
                               detail="row_did_not_open_a_thread")
         self._assert_on_site()
+        if not await self._wait_readable(thread=True):
+            return ReadResult(status="dom_unknown", navigations_used=1,
+                              detail="thread_did_not_settle")
         failed = await self._check_account()
         if failed:
             return ReadResult(status=failed.status, navigations_used=1, detail=failed.detail)
@@ -479,6 +510,10 @@ class InstagramBrowser:
 
         if want > 0:
             await self._load_history(want)
+
+        if not await self._wait_readable(thread=True):
+            return ReadResult(status="dom_unknown", thread_id=thread_id,
+                              navigations_used=navigations, detail="thread_did_not_settle")
 
         raw = await self.page.evaluate(JS_RAW)
         failed = await self._check_account()

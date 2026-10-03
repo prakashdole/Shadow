@@ -181,6 +181,59 @@ class B02IdentityTest(BrowserCase):
 class B03KindsTest(BrowserCase):
     """B03: direction, multiline, emoji, quotes, edits, system, media."""
 
+    async def test_large_emoji_only_bubble_without_dir_auto_is_read(self):
+        await self.open_fixture("thread_1to1.html")
+        await self.page.evaluate("""() => {
+            const art = document.createElement('div');
+            art.setAttribute('role', 'article'); art.setAttribute('aria-labelledby', 'large-emoji');
+            art.innerHTML = '<div role="none" id="large-emoji"><span>🥀🥀</span></div>';
+            document.querySelector('.pane').prepend(art);
+        }""")
+        self.assertEqual((await self.read()).events[0].text, '🥀🥀')
+
+    async def test_live_reel_icon_and_creator_links_do_not_become_text_or_participants(self):
+        await self.open_fixture("thread_1to1.html")
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            document.querySelector('.headlink').append(document.createElement('img'));
+            const art = document.createElement('div');
+            art.setAttribute('role', 'article');
+            art.innerHTML = '<div role="button"><a href="/fictional_creator/" dir="auto">creator</a>'
+                + '<svg aria-label="Clip"><title>Clip</title></svg></div>';
+            pane.prepend(art);
+        }""")
+        result = await self.read()
+        self.assertEqual(result.events[0].kind, "media")
+        self.assertEqual(result.events[0].media_label, "reel")
+        self.assertEqual(result.participant_links, 2)
+        self.assertFalse(result.is_group)
+
+    async def test_reverse_scrolling_never_claims_latest_window_is_complete(self):
+        await self.open_fixture("thread_1to1.html")
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            pane.style.display = 'flex'; pane.style.flexDirection = 'column-reverse';
+            pane.scrollTop = 0;
+        }""")
+        self.assertFalse((await self.read()).complete)
+
+    async def test_readiness_waits_for_delayed_articles_not_only_url(self):
+        from shadow.instagram import InstagramBrowser
+        from unittest.mock import patch
+
+        await self.open_fixture("thread_1to1.html")
+        adapter = InstagramBrowser()
+        adapter.page = self.page
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            const content = pane.innerHTML; pane.innerHTML = '';
+            setTimeout(() => { pane.innerHTML = content; }, 400);
+        }""")
+        # The read-only fixture is file://; production retains its host guard.
+        with patch.object(adapter, '_assert_on_site'):
+            self.assertTrue(await adapter._wait_readable(thread=True))
+        self.assertTrue((await self.read()).events)
+
     async def test_direction_is_geometry(self) -> None:
         await self.open_fixture("thread_1to1.html")
         result = await self.read()
