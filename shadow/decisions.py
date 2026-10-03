@@ -6,6 +6,7 @@ No prose extraction or partial JSON recovery: an invalid response is a hold.
 from __future__ import annotations
 
 import json
+import asyncio
 import re
 from dataclasses import dataclass
 from typing import Protocol
@@ -104,7 +105,7 @@ def parse_role(role: str, raw: str, allowed_event_ids: set[int], *,
                 raise ValueError("facts")
             result = FactProposal(tuple(value["facts"]))
         return RoleOutcome(role=role, value=result)
-    except (ValueError, TypeError, KeyError):
+    except (ValueError, TypeError, KeyError, RecursionError):
         return RoleOutcome(role=role, failure="invalid_output")
 
 
@@ -145,6 +146,9 @@ _ROLE_RULES = {
     ),
     "extraction": (
         "Propose only explicitly evidenced, non-quoted facts; never apply them. "
+        "At most five facts, each at most 300 characters. Each fact must have exactly "
+        "subject_id (the supplied contact subject), kind (preference, plan, relationship), "
+        "value_text (an exact source excerpt), and source_event_ids. Do not invent dates or paraphrases. "
         'Fields: {"schema_version":1,"facts":[]}.'
     ),
 }
@@ -176,6 +180,7 @@ class StructuredDecisions:
 
     def __init__(self, transport: ModelTransport, storage: Storage, settings: Settings):
         self.transport, self.storage, self.settings = transport, storage, settings
+        self._slots = asyncio.Semaphore(max(1, settings.provider_concurrency))
 
     async def assess(self, data: DecisionInput) -> RoleOutcome:
         floor = _minimum_risk(data)
@@ -219,6 +224,8 @@ class StructuredDecisions:
         if not self.storage.try_consume_rates(f"model_{role}", budget):
             return RoleOutcome(role=role, failure="budget_exhausted")
         payload = {"current_batch": [vars(event) for event in data.current_batch]}
+        if role == "extraction":
+            payload["subject_id"] = f"contact:{data.conversation_id}"
         if role != "extraction":
             payload.update({
                 "contact_status": data.contact_status,
@@ -229,14 +236,17 @@ class StructuredDecisions:
             })
         if assessment:
             payload["assessment"] = vars(assessment) | {"signals": sorted(assessment.signals)}
+        if role == "reply":
+            payload["facts"] = data.facts
+            payload["examples"] = data.examples
         try:
             input_text = json.dumps(payload, ensure_ascii=False)
             if len(input_text) > 32000:
                 return RoleOutcome(role=role, failure="invalid_output")
-            response = await self.transport.generate(
-                role, _INSTRUCTION + _ROLE_RULES[role],
-                input_text,
-            )
+            async with self._slots:
+                response = await self.transport.generate(
+                    role, _INSTRUCTION + _ROLE_RULES[role], input_text,
+                )
         except TimeoutError:
             return RoleOutcome(role=role, failure="timeout")
         except Exception:
@@ -245,11 +255,17 @@ class StructuredDecisions:
             return RoleOutcome(role=role, failure="truncated" if response.stop_reason == "max_tokens"
                                else "refusal" if response.stop_reason == "refusal"
                                else "provider_error")
-        allowed = {event.event_id for event in (*data.recent, *data.current_batch)}
+        allowed = {event["event_id"] for event in (*payload.get("recent", []), *payload["current_batch"])}
         result = parse_role(role, response.text, allowed,
                             max_items=self.settings.burst_max_items,
                             max_chars=self.settings.bubble_max_chars,
                             max_total=self.settings.reply_max_chars)
+        if isinstance(result.value, ReplyDraft):
+            available_memory = {fact["id"] for fact in data.facts}
+            normalized = [" ".join(message.split()).casefold() for message in result.value.messages]
+            if not set(result.value.used_memory_ids) <= available_memory or len(set(normalized)) != len(normalized):
+                return RoleOutcome(role=role, failure="invalid_output", usage=response.usage,
+                                   versions={"model": response.model, "schema": "1"})
         return RoleOutcome(role=role, value=result.value, failure=result.failure,
                            usage=response.usage, versions={"model": response.model,
                                                            "schema": "1"})

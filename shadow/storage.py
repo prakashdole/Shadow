@@ -319,8 +319,50 @@ ALTER TABLE alerts ADD COLUMN repeat_index INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE alerts ADD COLUMN escalated_at TEXT;
 """
 
+SCHEMA_V5 = """
+CREATE TABLE memory_versions (
+    scope TEXT PRIMARY KEY,
+    revision INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE memory_facts (
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    subject_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('preference', 'plan', 'relationship')),
+    value_text TEXT NOT NULL,
+    source_event_ids TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'extraction',
+    asserted_by TEXT NOT NULL DEFAULT 'contact',
+    confidence_label TEXT NOT NULL DEFAULT 'reported',
+    observed_at TEXT NOT NULL,
+    valid_from TEXT,
+    valid_until TEXT,
+    status TEXT NOT NULL DEFAULT 'candidate'
+      CHECK(status IN ('candidate', 'active', 'uncertain', 'superseded', 'expired', 'deleted')),
+    supersedes_id INTEGER REFERENCES memory_facts(id),
+    schema_version INTEGER NOT NULL DEFAULT 1,
+    UNIQUE(conversation_id, kind, value_text, source_event_ids)
+);
+CREATE TABLE correction_rules (
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER REFERENCES conversations(id),
+    dimension TEXT NOT NULL,
+    value_text TEXT NOT NULL,
+    source_update_id INTEGER NOT NULL REFERENCES owner_updates(update_id) DEFERRABLE INITIALLY DEFERRED,
+    created_at TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+    supersedes_id INTEGER REFERENCES correction_rules(id)
+);
+CREATE TABLE owner_profile (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+    profile_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1
+);
+"""
+
 MIGRATIONS: tuple[tuple, ...] = (
-    (1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3), (4, SCHEMA_V4),
+    (1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3), (4, SCHEMA_V4), (5, SCHEMA_V5),
 )
 CURRENT_VERSION = MIGRATIONS[-1][0]
 

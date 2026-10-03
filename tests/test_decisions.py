@@ -109,7 +109,7 @@ class DecisionBoundaryTests(unittest.TestCase):
                                  (ContextEvent(4, "contact", "text", "new"),),
                                  (ContextEvent(3, "contact", "text", "old"),))
             asyncio.run(StructuredDecisions(transport, storage, Settings()).extract(data))
-            self.assertEqual(list(transport.input), ["current_batch"])
+            self.assertEqual(set(transport.input), {"current_batch", "subject_id"})
 
     def test_distress_beats_money_in_an_earlier_bubble_and_needs_no_provider(self):
         class Unavailable:

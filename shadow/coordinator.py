@@ -160,6 +160,7 @@ class Coordinator:
         if not self.account_id:
             self.account_id = self._stored_account_id()
         self._dom_unknown_last_alert: str | None = None
+        self._extraction_tasks: set[asyncio.Task] = set()
 
     # --- runtime state ----------------------------------------------
     def _stored_account_id(self) -> str:
@@ -661,6 +662,11 @@ class Coordinator:
         if conversation["contact_status"] == "excluded":
             return
         events = self.storage.get_events(conversation_id)
+        from shadow.context_memory import ContextMemory
+
+        memory = ContextMemory(self.storage)
+        bundle = memory.bundle(conversation_id, self.clock.now())
+        work = self.storage.get_work(conversation_id)
         batch = [
             e for e in events
             if e["source"] == "dom" and e["sender"] == "contact"
@@ -674,7 +680,7 @@ class Coordinator:
             conversation_id=conversation_id,
             contact_status=conversation["contact_status"],
             relationship={},
-            owner_profile={},
+            owner_profile=bundle["owner_profile"],
             current_batch=tuple(
                 ContextEvent(e["id"], e["sender"], e["kind"], e["text"] or "") for e in batch
             ),
@@ -683,10 +689,12 @@ class Coordinator:
                 for e in events
                 if e["id"] not in {b["id"] for b in batch}
             ),
+            corrections=bundle["corrections"], facts=bundle["facts"],
+            memory_revision=bundle["memory_revision"],
         )
         report.assessed += 1
         assessed = await self._call(self.decisions.assess(data), conversation_id, "assess")
-        if not self._response_current(conversation_id, work, started_mode, report):
+        if not self._response_current(conversation_id, work, started_mode, report, data.memory_revision):
             return
         if assessed is None:
             self._hold(conversation_id, "assessment_timeout", report, tier="action")
@@ -695,6 +703,7 @@ class Coordinator:
             self._hold(conversation_id, f"assessment_{assessed.failure or 'invalid_output'}", report, tier="action")
             return
         assessment = assessed.value
+        self._start_extraction(data)
         assessment_record = {
             "assessment": {
                 "risk": assessment.risk,
@@ -731,7 +740,7 @@ class Coordinator:
         drafted = await self._call(
             self.decisions.draft(data, assessment), conversation_id, "draft"
         )
-        if not self._response_current(conversation_id, work, started_mode, report):
+        if not self._response_current(conversation_id, work, started_mode, report, data.memory_revision):
             self.storage.set_decision_status(decision_id, "superseded")
             return
         if drafted is None:
@@ -778,7 +787,7 @@ class Coordinator:
         return self.settings.burst_max_items
 
     def _response_current(self, conversation_id: int, started: dict,
-                          started_mode: str, report: TickReport) -> bool:
+                          started_mode: str, report: TickReport, memory_revision=None) -> bool:
         current = self.storage.get_work(conversation_id)
         if not current or any(current[key] != started[key]
                               for key in ("inbound_revision", "cancel_generation")):
@@ -787,7 +796,39 @@ class Coordinator:
         if self.paused or self.mode != started_mode:
             self._hold(conversation_id, "model_context_changed", report, tier=None)
             return False
+        if memory_revision is not None:
+            from shadow.context_memory import ContextMemory
+
+            if ContextMemory(self.storage).revision(conversation_id) != memory_revision:
+                report.note("discarded model response using stale memory")
+                return False
         return True
+
+    def _start_extraction(self, data):
+        from shadow.context_memory import ContextMemory
+        from shadow.contracts import FactProposal
+
+        if (data.contact_status not in ("known", "approved_unknown") or
+                len(self._extraction_tasks) >= self.settings.provider_concurrency):
+            return
+
+        async def extract():
+            result = await self._call(self.decisions.extract(data), data.conversation_id, "extract")
+            if result is not None and not result.failure and isinstance(result.value, FactProposal):
+                current = self.storage.get_conversation(data.conversation_id)
+                if current and current["contact_status"] in ("known", "approved_unknown"):
+                    ContextMemory(self.storage).save_candidates(data.conversation_id, result.value.facts,
+                                                               {event.event_id for event in data.current_batch})
+
+        task = asyncio.create_task(extract())
+        self._extraction_tasks.add(task)
+        task.add_done_callback(self._extraction_tasks.discard)
+
+    async def close(self):
+        tasks = list(self._extraction_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     def _record_decision(
         self, conversation_id: int, work: dict, status: str, record: dict, versions=None

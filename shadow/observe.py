@@ -91,4 +91,5 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        await coordinator.close()
         await browser.close()

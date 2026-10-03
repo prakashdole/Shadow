@@ -168,6 +168,9 @@ class DecisionInput:
     recent: tuple[ContextEvent, ...]         # earlier same-thread events, oldest first
     corrections: tuple[str, ...] = ()        # scoped rules (P06); empty before then
     deterministic_cues: frozenset[str] = frozenset()
+    facts: tuple[dict, ...] = ()
+    examples: tuple[dict, ...] = ()
+    memory_revision: str = "0:0"
 
 
 @dataclass(frozen=True)

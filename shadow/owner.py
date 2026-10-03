@@ -41,7 +41,7 @@ class OwnerCommands:
                 self.storage.record_owner_update(update_id, "ignored", "ignored")
                 return None
             command = text.split(maxsplit=1)[0]
-            outcome = self._execute(command, text[len(command):].strip())
+            outcome = self._execute(command, text[len(command):].strip(), update_id=update_id)
             self.storage.record_owner_update(update_id, command, outcome)
             return outcome
 
@@ -64,10 +64,12 @@ class OwnerCommands:
             return None
         return self.storage.get_conversation_by_thread(self.coordinator.account_id, arg)
 
-    def _execute(self, command: str, arg: str) -> str:
+    def _execute(self, command: str, arg: str, *, update_id=None) -> str:
         if command == "/help":
             return ("/status /pause /resume /mode observe /approve <thread-id> "
-                    "/ignore <thread-id> /alerts /ack <alert-id> /digest. Sending and autonomous mode are locked.")
+                    "/ignore <thread-id> /alerts /ack <alert-id> /digest /memory <thread-id> "
+                    "/correct <thread-id|global> <dimension> <value> /undo <rule-id> "
+                    "/accept-fact <fact-id> /forget <fact|rule> <id>. Sending and autonomous mode are locked.")
         if command == "/status":
             runtime = self.storage.get_runtime() or {}
             pending = len(self.storage.work_in_states(("pending", "due", "awaiting_approval")))
@@ -128,6 +130,61 @@ class OwnerCommands:
 
             return digest_text(self.storage, now=self.coordinator.clock.now(),
                                settings=self.coordinator.settings)
+        if command in ("/memory", "/correct", "/undo", "/accept-fact", "/forget", "/profile"):
+            from shadow.context_memory import ContextMemory, STYLE_RULES
+
+            memory = ContextMemory(self.storage)
+            now = self.coordinator.clock.now()
+            if command == "/profile":
+                try:
+                    memory.set_profile(json.loads(arg))
+                except (ValueError, TypeError):
+                    return "Invalid profile JSON; no change. Allowed: preferred_name, language, style, routine, current_update."
+                return "Owner profile updated; old drafts invalidated. Requalification is required before activation."
+            if command == "/memory":
+                conversation = self._conversation(arg)
+                if not conversation:
+                    return "Supply an exact observed thread ID."
+                lines = [f"Memory thread {arg} revision={memory.revision(conversation['id'])}"]
+                lines.extend(f"Fact #{fact['id']} [{fact['status']}] {fact['value_text']} "
+                             f"sources={fact['source_event_ids']} until={fact['valid_until'] or 'none'}"
+                             for fact in memory.facts(conversation["id"], now, candidates=True))
+                lines.extend(memory.rules(conversation["id"]))
+                return "\n".join(lines)
+            if command == "/correct":
+                parts = arg.split()
+                if len(parts) != 3:
+                    return "Use /correct <thread-id|global> <emoji|language|length|profanity|tone> <value>."
+                target, dimension, value = parts
+                conversation = None if target == "global" else self._conversation(target)
+                if target != "global" and not conversation:
+                    return "No exact observed thread ID; no correction applied."
+                try:
+                    rule = memory.correct(conversation["id"] if conversation else None,
+                                          dimension, value, update_id)
+                except ValueError as exc:
+                    return str(exc) + " Options: " + json.dumps({key: list(values) for key, values in STYLE_RULES.items()})
+                return f"Rule #{rule}: {STYLE_RULES[dimension][value]} Scope={target}; /undo {rule}."
+            if command in ("/undo", "/accept-fact"):
+                if not _THREAD.fullmatch(arg):
+                    return "Supply one exact record ID."
+                changed = memory.undo(int(arg)) if command == "/undo" else memory.accept(int(arg), now)
+                return "Memory updated; old drafts invalidated." if changed else "No active rule or eligible unconflicted candidate; no promotion."
+            parts = arg.split()
+            if len(parts) not in (2, 3) or parts[0] not in ("fact", "rule") or not _THREAD.fullmatch(parts[1]):
+                return "Use /forget <fact|rule> <id> to preview; then repeat with confirm."
+            kind, record_id = parts[:2]
+            preview = f"Forget preview: {kind} #{record_id}; repeat /forget {kind} {record_id} confirm. Old backups/provider copies may retain it."
+            if len(parts) == 2:
+                return preview
+            if parts[2] != "confirm":
+                return "Confirmation must be the exact word confirm."
+            prior = self.storage.conn.execute("SELECT processed_at FROM owner_updates WHERE outcome = ? "
+                                              "ORDER BY update_id DESC LIMIT 1", (preview,)).fetchone()
+            from shadow.storage import parse_iso
+            if not prior or (now - parse_iso(prior[0])).total_seconds() > self.coordinator.settings.draft_ttl:
+                return "Preview missing or expired; request a fresh preview."
+            return "Record forgotten; dependent drafts invalidated." if memory.forget(kind, int(record_id)) else "Record not found."
         return "Unsupported command. /help lists installed controls; no Instagram send performed."
 
 
