@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import re
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -36,6 +37,9 @@ class OwnerCommands:
                 self.storage.record_owner_update(update_id, "ignored", "ignored")
                 return None
             text = message["text"].strip()
+            if not text:
+                self.storage.record_owner_update(update_id, "ignored", "ignored")
+                return None
             command = text.split(maxsplit=1)[0]
             outcome = self._execute(command, text[len(command):].strip())
             self.storage.record_owner_update(update_id, command, outcome)
@@ -150,5 +154,22 @@ class TelegramTransport:
                 count += 1
         for response in handler.storage.pending_owner_responses():
             self._post("sendMessage", chat_id=handler.chat_id, text=response["outcome"])
+            handler.storage.mark_owner_response_delivered(response["update_id"])
+        return count
+
+    async def poll_once_async(self, handler: OwnerCommands) -> int:
+        """Only HTTP runs in worker threads. SQLite and commands stay on the
+        coordinator's event-loop thread, so pause can interrupt model waits."""
+        cursor = handler.storage.last_owner_update_id()
+        updates = await asyncio.to_thread(
+            self._post, "getUpdates", offset=0 if cursor is None else cursor + 1,
+            timeout=20, allowed_updates=json.dumps(["message"]),
+        )
+        if type(updates) is not list:
+            raise RuntimeError("Telegram returned invalid updates")
+        count = sum(handler.process(update) is not None for update in updates)
+        for response in handler.storage.pending_owner_responses():
+            await asyncio.to_thread(self._post, "sendMessage", chat_id=handler.chat_id,
+                                    text=response["outcome"])
             handler.storage.mark_owner_response_delivered(response["update_id"])
         return count

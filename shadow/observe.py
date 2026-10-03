@@ -29,7 +29,8 @@ async def observe_once(
 
 
 async def observe_loop(storage: Storage, browser, settings: Settings, account_id: str,
-                       decisions=None, *, once: bool = False) -> TickReport:
+                       decisions=None, *, once: bool = False, owner_transport=None,
+                       owner_user_id: int | None = None, owner_chat_id: int | None = None) -> TickReport:
     """Keep a dedicated browser bound for read-only observation.
 
     One sequential worker owns the store and browser. A global pause exits so
@@ -43,6 +44,22 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
     coordinator = Coordinator(storage, browser, decisions or NoDecisionProvider(),
                               settings, account_id=account_id)
     await coordinator.startup()
+    owner_task = None
+    if owner_transport is not None:
+        from shadow.owner import OwnerCommands
+
+        handler = OwnerCommands(storage, coordinator, user_id=owner_user_id, chat_id=owner_chat_id)
+
+        async def poll_owner():
+            while True:
+                try:
+                    await owner_transport.poll_once_async(handler)
+                except RuntimeError:
+                    storage.raise_alert(dedupe_key="telegram_outage", tier="action",
+                                        reason="telegram_outage")
+                    await asyncio.sleep(settings.inbox_check_interval)
+
+        owner_task = asyncio.create_task(poll_owner())
     try:
         initial = await browser.start()
         if initial.status in GLOBAL_PAUSE_STATUSES:
@@ -57,4 +74,7 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
                 return report
             await asyncio.sleep(settings.inbox_check_interval)
     finally:
+        if owner_task is not None:
+            owner_task.cancel()
+            await asyncio.gather(owner_task, return_exceptions=True)
         await browser.close()

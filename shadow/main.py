@@ -111,7 +111,8 @@ def owner_poll_once_command() -> None:
 @cli.command("observe")
 @click.option("--once", is_flag=True, help="One snapshot, then stop.")
 @click.option("--with-model", is_flag=True, help="Call explicitly configured models; still never send.")
-def observe_command(once: bool, with_model: bool) -> None:
+@click.option("--with-telegram", is_flag=True, help="Process owner controls in the observer process.")
+def observe_command(once: bool, with_model: bool, with_telegram: bool) -> None:
     """Run the v2 non-sending observer against a dedicated browser profile."""
     from shadow.instagram import InstagramBrowser
     from shadow.observe import observe_loop
@@ -126,6 +127,16 @@ def observe_command(once: bool, with_model: bool) -> None:
         directory = data_dir()
         settings = load_settings(directory)
         with open_storage(directory) as storage:
+            owner_transport = None
+            owner_ids = {}
+            if with_telegram:
+                from shadow.owner import TelegramTransport
+
+                owner_transport = TelegramTransport(os.environ.get("SHADOW_TELEGRAM_TOKEN", ""))
+                owner_ids = {
+                    "owner_user_id": int(os.environ.get("SHADOW_TELEGRAM_USER_ID", "")),
+                    "owner_chat_id": int(os.environ.get("SHADOW_TELEGRAM_CHAT_ID", "")),
+                }
             decisions = None
             if with_model:
                 from shadow.decisions import StructuredDecisions
@@ -141,7 +152,8 @@ def observe_command(once: bool, with_model: bool) -> None:
                 expected_account=expected,
             )
             report = asyncio.run(observe_loop(storage, browser, settings, account_id,
-                                              decisions, once=once))
+                                              decisions, once=once,
+                                              owner_transport=owner_transport, **owner_ids))
     except (SettingsError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"rows={report.rows} opened={report.opened} ingested={report.ingested} "
