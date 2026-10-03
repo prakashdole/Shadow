@@ -15,6 +15,14 @@ def fictional_case():
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_quote_context_is_preserved_without_becoming_message_text(self):
+        case = fictional_case()
+        case['events'][0]['reply_to_text'] = '[quoted reel]'
+        validate_dataset([case])
+        event = decision_input(case).current_batch[0]
+        self.assertEqual(event.text, 'hello')
+        self.assertEqual(event.reply_to_text, '[quoted reel]')
+
     def test_split_and_future_source_leakage_rejected(self):
         a, b = fictional_case(), fictional_case()
         b.update(id="fictional-2", split="test")

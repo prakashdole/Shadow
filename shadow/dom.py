@@ -219,6 +219,18 @@ JS_RAW = r"""() => {
                 const t = leavesOf(q).map(textOf).filter(Boolean).join(' ');
                 if (t) { replyTo = t; break; }
             }
+            // Live replies render the quoted card before the article, not
+            // inside a blockquote. Bind only the adjacent quote beneath an
+            // explicit reply marker, never a previous ordinary message.
+            for (let node = art; !replyTo && node && node !== pane; node = node.parentElement) {
+                const quote = node.previousElementSibling;
+                if (!quote || quote.querySelector('[role="article"]')) continue;
+                const marker = quote.previousElementSibling;
+                if (!marker || !/replied to (you|yourself)|you replied to/i.test(marker.innerText || '')) continue;
+                const label = mediaOf(quote);
+                const text = leavesOf(quote).map(textOf).filter(Boolean).join(' ');
+                replyTo = label ? '[quoted ' + label + ']' : text || null;
+            }
             const own = leavesOf(art)
                 .filter(el => !el.closest('[role="blockquote"]'))
                 .map(textOf).filter(Boolean);

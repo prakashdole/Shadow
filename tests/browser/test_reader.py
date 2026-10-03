@@ -181,6 +181,41 @@ class B02IdentityTest(BrowserCase):
 class B03KindsTest(BrowserCase):
     """B03: direction, multiline, emoji, quotes, edits, system, media."""
 
+    async def test_settled_current_thread_reads_without_navigation_or_readiness_delay(self):
+        from shadow.instagram import InstagramBrowser
+        from unittest.mock import AsyncMock, patch
+
+        await self.open_fixture('thread_1to1.html')
+        adapter = InstagramBrowser()
+        adapter.page = self.page
+        await self.set_path('/direct/t/12345/')
+        # read_thread still checks URL identity; the fixture supplies that URL.
+        class FixturePage:
+            url = 'https://www.instagram.com/direct/t/12345/'
+            async def evaluate(inner, script):
+                return await self.page.evaluate(script)
+            async def wait_for_function(inner, script, **kwargs):
+                return None
+        adapter.page = FixturePage()
+        with patch.object(adapter, '_wait_readable', new_callable=AsyncMock) as wait:
+            result = await adapter.read_thread('12345')
+            wait.assert_not_awaited()
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(result.navigations_used, 0)
+
+    async def test_adjacent_live_quote_belongs_to_reply_not_a_standalone_message(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            const wrap = document.createElement('div');
+            wrap.innerHTML = '<div><span dir="auto">Test Contact replied to you</span></div>'
+              + '<div><div role="button"><svg aria-label="Clip"><title>Clip</title></svg></div></div>'
+              + '<div><div role="article"><span dir="auto">reply text</span></div></div>';
+            document.querySelector('.pane').prepend(wrap);
+        }""")
+        result = await self.read()
+        self.assertEqual(result.events[0].text, 'reply text')
+        self.assertEqual(result.events[0].reply_to_text, '[quoted reel]')
+
     async def test_relative_age_seen_receipt_is_a_pause_not_system_text(self):
         await self.open_fixture('thread_1to1.html')
         await self.page.evaluate("""() => {

@@ -156,6 +156,7 @@ class ContextEvent:
     sender: Sender
     kind: Kind
     text: str
+    reply_to_text: str | None = None
 
 
 @dataclass(frozen=True)

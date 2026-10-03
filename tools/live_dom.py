@@ -40,6 +40,7 @@ JS_STRUCTURE = r"""() => {
         articles: [...document.querySelectorAll('[role="article"]')].map(el => ({
             geometry: geometry(el),
             markup: el.parentElement?.parentElement?.outerHTML,
+            preceding: el.parentElement?.parentElement?.parentElement?.previousElementSibling?.outerHTML,
             ancestors: [el.parentElement, el.parentElement?.parentElement,
                         el.parentElement?.parentElement?.parentElement]
                 .filter(Boolean).map(geometry),

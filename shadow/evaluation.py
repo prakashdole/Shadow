@@ -59,6 +59,8 @@ def validate_dataset(cases):
                     or event["kind"] not in ("text", "media", "reaction", "system", "unknown")
                     or type(event["text"]) is not str):
                 raise ValueError("Invalid, future or unordered source event")
+            if event.get("reply_to_text") is not None and type(event["reply_to_text"]) is not str:
+                raise ValueError("Invalid quoted context")
             known[event["id"]] = event
             previous = event["time"]
         if not case["current_ids"] or any(type(item) is not int or item not in known for item in case["current_ids"]):
@@ -84,7 +86,7 @@ def validate_dataset(cases):
 
 def decision_input(case):
     current = set(case["current_ids"])
-    events = [ContextEvent(event["id"], event["sender"], event["kind"], event["text"])
+    events = [ContextEvent(event["id"], event["sender"], event["kind"], event["text"], event.get("reply_to_text"))
               for event in case["events"]]
     return DecisionInput(case["contact_id"], case.get("contact_status", "known"),
                          case.get("relationship", {}), case.get("owner_profile", {}),

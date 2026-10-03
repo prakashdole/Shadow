@@ -742,10 +742,10 @@ class Coordinator:
             relationship={},
             owner_profile=bundle["owner_profile"],
             current_batch=tuple(
-                ContextEvent(e["id"], e["sender"], e["kind"], e["text"] or "") for e in batch
+                ContextEvent(e["id"], e["sender"], e["kind"], e["text"] or "", e["reply_to"]) for e in batch
             ),
             recent=tuple(
-                ContextEvent(e["id"], e["sender"], e["kind"], e["text"] or "")
+                ContextEvent(e["id"], e["sender"], e["kind"], e["text"] or "", e["reply_to"])
                 for e in events
                 if e["id"] not in {b["id"] for b in batch}
             ),

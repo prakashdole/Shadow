@@ -511,11 +511,13 @@ class InstagramBrowser:
         if want > 0:
             await self._load_history(want)
 
-        if not await self._wait_readable(thread=True):
-            return ReadResult(status="dom_unknown", thread_id=thread_id,
-                              navigations_used=navigations, detail="thread_did_not_settle")
-
         raw = await self.page.evaluate(JS_RAW)
+        if (navigations or not raw.get("pane_present")
+                or any(not article.get("laid") for article in raw.get("articles", []))):
+            if not await self._wait_readable(thread=True):
+                return ReadResult(status="dom_unknown", thread_id=thread_id,
+                                  navigations_used=navigations, detail="thread_did_not_settle")
+            raw = await self.page.evaluate(JS_RAW)
         failed = await self._check_account()
         if failed:
             return ReadResult(status=failed.status, navigations_used=navigations,

@@ -120,10 +120,11 @@ class DecisionBoundaryTests(unittest.TestCase):
             transport = Capture()
             data = DecisionInput(1, "known", {"secret": "relationship"},
                                  {"secret": "owner"},
-                                 (ContextEvent(4, "contact", "text", "new"),),
+                                 (ContextEvent(4, "contact", "text", "new", '[quoted reel]'),),
                                  (ContextEvent(3, "contact", "text", "old"),))
             asyncio.run(StructuredDecisions(transport, storage, Settings()).extract(data))
             self.assertEqual(set(transport.input), {"current_batch", "subject_id"})
+            self.assertEqual(transport.input['current_batch'][0]['reply_to_text'], '[quoted reel]')
 
     def test_distress_beats_money_in_an_earlier_bubble_and_needs_no_provider(self):
         class Unavailable:
