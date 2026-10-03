@@ -68,8 +68,30 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
                                       secondary_chat_id=secondary_chat_id)
 
         async def deliver_alerts():
+            from shadow.approvals import Approvals
+
+            approvals = Approvals(coordinator)
             while True:
                 await notifications.deliver_due()
+                for request in approvals.pending():
+                    if request["message_id"] is not None:
+                        continue
+                    import json
+
+                    draft = json.loads(request["record_json"])["reply"]["messages"]
+                    text = f"Draft #{request['id']} thread ref={request['conversation_id']}\n" + "\n".join(draft)
+                    keyboard = {"inline_keyboard": [[
+                        {"text": action.title(), "callback_data": f"approval:{request['id']}:{action}"}
+                        for action in ("send", "edit", "skip")]]}
+                    try:
+                        result = await asyncio.to_thread(owner_transport._post, "sendMessage", chat_id=owner_chat_id,
+                                                         text=text, reply_markup=json.dumps(keyboard))
+                    except RuntimeError:
+                        continue
+                    if type(result) is dict and type(result.get("message_id")) is int:
+                        with storage.transaction() as conn:
+                            conn.execute("UPDATE approval_requests SET message_id = ? WHERE id = ?",
+                                         (result["message_id"], request["id"]))
                 await asyncio.sleep(max(1, settings.pane_check_interval))
 
         alert_task = asyncio.create_task(deliver_alerts())

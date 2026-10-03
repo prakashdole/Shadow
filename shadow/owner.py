@@ -32,6 +32,9 @@ class OwnerCommands:
         with self.storage.transaction():
             if self.storage.owner_update(update_id):
                 return None
+            callback = update.get("callback_query")
+            if type(callback) is dict:
+                return self._callback(callback, update_id)
             message = update.get("message")
             if not self._authorized(message):
                 self.storage.record_owner_update(update_id, "ignored", "ignored")
@@ -44,6 +47,24 @@ class OwnerCommands:
             outcome = self._execute(command, text[len(command):].strip(), update_id=update_id)
             self.storage.record_owner_update(update_id, command, outcome)
             return outcome
+
+    def _callback(self, callback, update_id):
+        message, user = callback.get("message"), callback.get("from")
+        if (type(message) is not dict or type(user) is not dict
+                or user.get("id") != self.user_id or type(user.get("id")) is not int
+                or type(message.get("chat")) is not dict or message["chat"].get("id") != self.chat_id
+                or message["chat"].get("type") != "private" or type(message.get("message_id")) is not int):
+            self.storage.record_owner_update(update_id, "ignored", "ignored")
+            return None
+        match = re.fullmatch(r"approval:(\d+):(send|edit|skip)", str(callback.get("data", "")))
+        if not match:
+            self.storage.record_owner_update(update_id, "ignored", "ignored")
+            return None
+        from shadow.approvals import Approvals
+
+        outcome = Approvals(self.coordinator).act(int(match[1]), match[2], message_id=message["message_id"])
+        self.storage.record_owner_update(update_id, "approval", outcome)
+        return outcome
 
     def _authorized(self, message: object) -> bool:
         if type(message) is not dict or type(message.get("text")) is not str:
@@ -130,6 +151,13 @@ class OwnerCommands:
 
             return digest_text(self.storage, now=self.coordinator.clock.now(),
                                settings=self.coordinator.settings)
+        if command == "/edit-draft":
+            request, separator, replacement = arg.partition(" ")
+            if not separator or not _THREAD.fullmatch(request):
+                return "Use /edit-draft <request-id> <exact replacement text>."
+            from shadow.approvals import Approvals
+
+            return Approvals(self.coordinator).act(int(request), "edit", replacement=replacement)
         if command in ("/memory", "/correct", "/undo", "/accept-fact", "/forget", "/profile"):
             from shadow.context_memory import ContextMemory, STYLE_RULES
 
@@ -213,7 +241,7 @@ class TelegramTransport:
     def poll_once(self, handler: OwnerCommands) -> int:
         cursor = handler.storage.last_owner_update_id()
         updates = self._post("getUpdates", offset=0 if cursor is None else cursor + 1,
-                             timeout=20, allowed_updates=json.dumps(["message"]))
+                             timeout=20, allowed_updates=json.dumps(["message", "callback_query"]))
         count = 0
         for update in updates:
             outcome = handler.process(update)
@@ -231,7 +259,7 @@ class TelegramTransport:
         cursor = handler.storage.last_owner_update_id()
         updates = await asyncio.to_thread(
             self._post, "getUpdates", offset=0 if cursor is None else cursor + 1,
-            timeout=20, allowed_updates=json.dumps(["message"]),
+            timeout=20, allowed_updates=json.dumps(["message", "callback_query"]),
         )
         if type(updates) is not list:
             raise RuntimeError("Telegram returned invalid updates")

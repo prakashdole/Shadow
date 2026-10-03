@@ -814,6 +814,8 @@ class Coordinator:
 
         async def extract():
             result = await self._call(self.decisions.extract(data), data.conversation_id, "extract")
+            if self.storage.conn is None:
+                return
             if result is not None and not result.failure and isinstance(result.value, FactProposal):
                 current = self.storage.get_conversation(data.conversation_id)
                 if current and current["contact_status"] in ("known", "approved_unknown"):
@@ -874,6 +876,9 @@ class Coordinator:
             self.storage.update_work(
                 conversation_id, state="awaiting_approval", held_reason=None
             )
+            from shadow.approvals import Approvals
+
+            Approvals(self).create(decision_id)
             return
         for index, message in enumerate(messages):
             self.storage.add_outbox_item(

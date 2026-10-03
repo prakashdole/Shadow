@@ -361,8 +361,23 @@ CREATE TABLE owner_profile (
 );
 """
 
+SCHEMA_V6 = """
+CREATE TABLE approval_requests (
+    id INTEGER PRIMARY KEY,
+    decision_id INTEGER NOT NULL UNIQUE REFERENCES decisions(id),
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    state TEXT NOT NULL DEFAULT 'pending'
+      CHECK(state IN ('pending','editing','approved','skipped','expired','superseded')),
+    message_id INTEGER,
+    owner_edit TEXT,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+"""
+
 MIGRATIONS: tuple[tuple, ...] = (
     (1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3), (4, SCHEMA_V4), (5, SCHEMA_V5),
+    (6, SCHEMA_V6),
 )
 CURRENT_VERSION = MIGRATIONS[-1][0]
 

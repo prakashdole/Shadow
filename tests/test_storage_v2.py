@@ -56,13 +56,13 @@ class V2Case(unittest.TestCase):
 
 class TestFreshV2(V2Case):
     def test_current_version_is_two_and_v1_sql_is_untouched(self) -> None:
-        self.assertEqual(ST.CURRENT_VERSION, 5)
+        self.assertEqual(ST.CURRENT_VERSION, 6)
         self.assertEqual(
             self.storage.conn.execute("PRAGMA user_version").fetchone()[0], ST.CURRENT_VERSION
         )
         # v1 is still described by v1 SQL: a fresh database applies both, and
         # the v1 statements are byte-identical to what P01 shipped.
-        self.assertEqual(len(ST.MIGRATIONS), 5)
+        self.assertEqual(len(ST.MIGRATIONS), 6)
         self.assertEqual(ST.MIGRATIONS[0][0], 1)
         self.assertIn("CREATE TABLE outbox", ST.MIGRATIONS[0][1])
 
