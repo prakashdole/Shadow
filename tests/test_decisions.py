@@ -61,6 +61,11 @@ class DecisionBoundaryTests(unittest.TestCase):
             self.assertEqual(asyncio.run(decisions.draft(data, assessment.value)).failure, "invalid_output")
             self.assertEqual(asyncio.run(decisions.assess(data)).failure, "budget_exhausted")
             self.assertEqual(fake.calls, ["risk", "reply"])
+            records = storage.conn.execute("SELECT role, failure, usage_json, versions_json FROM role_calls ORDER BY id").fetchall()
+            self.assertEqual([row[0] for row in records], ["risk", "reply", "risk"])
+            self.assertEqual(records[-1][1], "budget_exhausted")
+            self.assertIn("prompt_digest", json.loads(records[0][3]))
+            self.assertEqual(json.loads(records[0][2]), {})
 
     def test_bedrock_requires_models_and_passes_only_supported_arguments(self):
         class Client:
@@ -77,6 +82,12 @@ class DecisionBoundaryTests(unittest.TestCase):
         result = asyncio.run(transport.generate("risk", "system", "data"))
         self.assertEqual(result.model, "profile-id")
         self.assertEqual(set(client.kw), {"modelId", "system", "messages", "inferenceConfig"})
+        self.assertEqual(transport.configuration("risk")["transport_attempts"], 1)
+        with self.assertRaises(ValueError):
+            BedrockTransport(region="us-east-1", models=transport.models, client=client,
+                             inference={"risk": {"temperature": 4}})
+        with self.assertRaises(ValueError):
+            asyncio.run(transport.generate("risk", "system", "x" * 32000))
 
     def test_strong_cues_can_raise_but_never_lower_risk(self):
         class UnsafeFake:

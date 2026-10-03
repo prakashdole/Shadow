@@ -388,9 +388,22 @@ CREATE TABLE quality_signals (
 );
 """
 
+SCHEMA_V8 = """
+CREATE TABLE role_calls (
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER REFERENCES conversations(id),
+    role TEXT NOT NULL CHECK(role IN ('risk','reply','extraction')),
+    started_at TEXT NOT NULL,
+    latency_ms INTEGER NOT NULL,
+    failure TEXT,
+    usage_json TEXT NOT NULL,
+    versions_json TEXT NOT NULL
+);
+"""
+
 MIGRATIONS: tuple[tuple, ...] = (
     (1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3), (4, SCHEMA_V4), (5, SCHEMA_V5),
-    (6, SCHEMA_V6), (7, SCHEMA_V7),
+    (6, SCHEMA_V6), (7, SCHEMA_V7), (8, SCHEMA_V8),
 )
 CURRENT_VERSION = MIGRATIONS[-1][0]
 

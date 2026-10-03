@@ -55,14 +55,31 @@ class V2Case(unittest.TestCase):
 
 
 class TestFreshV2(V2Case):
+    def test_populated_v7_migration_preserves_data_and_verified_backup(self):
+        cid = self.conversation()
+        self.storage.add_event(conversation_id=cid, sender="contact", kind="text", text="fictional",
+                               source="dom", origin="unknown")
+        self.storage.close()
+        with sqlite3.connect(self.dir / ST.DB_FILENAME) as conn:
+            conn.execute("DROP TABLE role_calls")
+            conn.execute("PRAGMA user_version = 7")
+        self.storage = ST.open_storage(self.dir)
+        self.assertEqual(self.storage.get_events(cid)[0]["text"], "fictional")
+        self.assertEqual(self.storage.conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+        backups = list((self.dir / ST.BACKUP_DIR).glob("*.sqlite3"))
+        self.assertTrue(backups)
+        with sqlite3.connect(backups[-1]) as backup:
+            self.assertEqual(backup.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(backup.execute("SELECT text FROM events").fetchone()[0], "fictional")
+
     def test_current_version_is_two_and_v1_sql_is_untouched(self) -> None:
-        self.assertEqual(ST.CURRENT_VERSION, 7)
+        self.assertEqual(ST.CURRENT_VERSION, 8)
         self.assertEqual(
             self.storage.conn.execute("PRAGMA user_version").fetchone()[0], ST.CURRENT_VERSION
         )
         # v1 is still described by v1 SQL: a fresh database applies both, and
         # the v1 statements are byte-identical to what P01 shipped.
-        self.assertEqual(len(ST.MIGRATIONS), 7)
+        self.assertEqual(len(ST.MIGRATIONS), 8)
         self.assertEqual(ST.MIGRATIONS[0][0], 1)
         self.assertIn("CREATE TABLE outbox", ST.MIGRATIONS[0][1])
 

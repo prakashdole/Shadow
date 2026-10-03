@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import asyncio
 import re
+import hashlib
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -221,6 +223,30 @@ class StructuredDecisions:
 
     async def _call(self, role: str, data: DecisionInput,
                     assessment: RiskAssessment | None = None) -> RoleOutcome:
+        from shadow.storage import utcnow
+
+        started_at, started = utcnow(), time.monotonic()
+        configuration = (self.transport.configuration(role) if hasattr(self.transport, "configuration") else {})
+        versions = {"schema": "1", "prompt_digest": hashlib.sha256(
+            (_INSTRUCTION + _ROLE_RULES[role]).encode()).hexdigest(), **configuration}
+        result = None
+        try:
+            result = await self._generate(role, data, assessment)
+            return RoleOutcome(role=role, value=result.value, failure=result.failure, usage=result.usage,
+                               versions=versions | result.versions)
+        finally:
+            # Count missing usage as unknown, never zero. Persist no prompts or
+            # raw responses; extraction failures are auditable as well as replies.
+            with self.storage.transaction() as conn:
+                conn.execute("INSERT INTO role_calls(conversation_id, role, started_at, latency_ms, failure, "
+                             "usage_json, versions_json) VALUES (?, ?, ?, ?, ?, ?, ?)", (
+                    data.conversation_id if self.storage.get_conversation(data.conversation_id) else None,
+                    role, started_at, int((time.monotonic() - started) * 1000),
+                    result.failure if result else "cancelled", json.dumps(result.usage if result else {}),
+                    json.dumps(versions | (result.versions if result else {}), sort_keys=True)))
+
+    async def _generate(self, role: str, data: DecisionInput,
+                        assessment: RiskAssessment | None = None) -> RoleOutcome:
         budget = getattr(self.settings, {"risk": "risk_call_budget", "reply": "reply_call_budget",
                                          "extraction": "extraction_call_budget"}[role])
         if not self.storage.try_consume_rates(f"model_{role}", budget):
@@ -243,7 +269,7 @@ class StructuredDecisions:
             payload["examples"] = data.examples
         try:
             input_text = json.dumps(payload, ensure_ascii=False)
-            if len(input_text) > 32000:
+            if len(input_text) + len(_INSTRUCTION + _ROLE_RULES[role]) > getattr(self.transport, "context_chars", 32000):
                 return RoleOutcome(role=role, failure="invalid_output")
             async with self._slots:
                 response = await self.transport.generate(
@@ -256,7 +282,7 @@ class StructuredDecisions:
         if response.stop_reason != "end_turn":
             return RoleOutcome(role=role, failure="truncated" if response.stop_reason == "max_tokens"
                                else "refusal" if response.stop_reason == "refusal"
-                               else "provider_error")
+                               else "provider_error", usage=response.usage, versions={"model": response.model})
         allowed = {event["event_id"] for event in (*payload.get("recent", []), *payload["current_batch"])}
         result = parse_role(role, response.text, allowed,
                             max_items=self.settings.burst_max_items,
