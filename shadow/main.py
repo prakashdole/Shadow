@@ -194,6 +194,40 @@ def import_history(source: str, dry_run: bool, i_have_a_verified_backup: bool) -
     click.echo(run_import(source, None, dry_run=dry_run, scratch_dir=scratch).as_text())
 
 
+@cli.command("evaluate")
+@click.option("--dataset", required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option("--split", type=click.Choice(["dev", "test"]), default="dev")
+@click.option("--repeats", type=click.IntRange(1, 3), default=1)
+@click.option("--with-model", is_flag=True, help="Explicitly authorize paid configured model calls.")
+def evaluate_command(dataset, split, repeats, with_model):
+    """Validate causal data, or evaluate explicit models. Never contacts Instagram."""
+    import json
+    from pathlib import Path
+    from shadow.evaluation import evaluate, validate_dataset
+
+    try:
+        cases = json.loads(Path(dataset).read_text(encoding="utf-8"))
+        digest = validate_dataset(cases)
+        if not with_model:
+            click.echo(json.dumps({"dataset_digest": digest, "cases": len(cases),
+                                   "status": "validated_inputs_only", "qualification": "pending_external"}))
+            return
+        from shadow.decisions import StructuredDecisions
+        from shadow.model_bedrock import BedrockTransport
+        from shadow.settings import data_dir, load_settings
+        from shadow.storage import open_storage
+
+        models = {role: os.environ.get(f"SHADOW_{role.upper()}_MODEL", "").strip()
+                  for role in ("risk", "reply", "extraction")}
+        transport = BedrockTransport(region=os.environ.get("SHADOW_AWS_REGION", ""), models=models)
+        with open_storage(data_dir()) as storage:
+            decisions = StructuredDecisions(transport, storage, load_settings(data_dir()))
+            report = asyncio.run(evaluate(cases, decisions, split=split, repeats=repeats))
+        click.echo(json.dumps(report, sort_keys=True))
+    except (ValueError, OSError) as exc:
+        raise click.ClickException("Evaluation refused: " + type(exc).__name__) from None
+
+
 @cli.command()
 @click.option("--person", required=True, help="Name, as stored in data/people/.")
 @click.option("--message", required=True, help="What they said.")
