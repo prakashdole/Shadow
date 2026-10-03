@@ -37,6 +37,17 @@ JS_STRUCTURE = r"""() => {
         rows: [...document.querySelectorAll('[aria-label="Thread list"] div[role="button"]')]
             .filter(el => el.getBoundingClientRect().height >= 60 && el.getBoundingClientRect().height <= 90)
             .map(el => ({geometry: geometry(el), markup: el.outerHTML})),
+        outside_images: [...document.querySelectorAll('img[alt]')]
+            .filter(el => !el.closest('[role="article"], [aria-label="Thread list"]'))
+            .map(el => ({geometry: geometry(el), markup: el.parentElement?.parentElement?.outerHTML})),
+        outside_controls: [...document.querySelectorAll('[role="button"]')]
+            .filter(el => !el.closest('[role="article"], [aria-label="Thread list"]'))
+            .map(el => ({geometry: geometry(el), label: el.getAttribute('aria-label'),
+                        text: el.innerText, markup: el.outerHTML,
+                        ancestors: [el.parentElement, el.parentElement?.parentElement,
+                                    el.parentElement?.parentElement?.parentElement]
+                            .filter(Boolean).map(n => ({geometry: geometry(n),
+                                articles: n.querySelectorAll('[role="article"]').length}))})),
         scrolls: [...document.querySelectorAll('div')]
             .filter(el => el.clientHeight >= 200 && el.scrollHeight > el.clientHeight + 40)
             .map(geometry),

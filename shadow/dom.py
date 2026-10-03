@@ -54,7 +54,7 @@ _SEP_TEXT = re.compile(
     r"(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\s+\d{1,2}:\d{2}"
     r"|\d{1,2}\s+[a-z]{3,9},?\s+\d{1,2}:\d{2}"
     r"|[a-z]{3,9}\s+\d{1,2},?\s+\d{1,2}:\d{2}"
-    r"|today|yesterday|earlier"
+    r"|today|yesterday|earlier|new messages"
     r"|\d{1,2}:\d{2}"
     r")(?:\s*[ap]m)?$",
     re.I,
@@ -270,8 +270,29 @@ JS_RAW = r"""() => {
         // articles by `order` so a reply-target line can attach to the next one.
         let order = 0;
         const items = [];
-        for (const el of pane.querySelectorAll('[role="article"], [dir="auto"]')) {
-            if (el.getAttribute('role') === 'article') { items.push({order: order++, article: true}); continue; }
+        for (const el of pane.querySelectorAll('[role="article"], [dir="auto"], [role="button"]')) {
+            if (el.getAttribute('role') === 'article') { items.push({order: order++, article: true, node: el}); continue; }
+            if (el.closest('[role="article"]') !== null) continue;
+            if (el.getAttribute('role') === 'button') {
+                if (el.querySelector('[dir="auto"], [role="article"], [role="button"]') || el.closest('[dir="auto"]')) continue;
+                const text = textOf(el);
+                if (!/\p{Extended_Pictographic}/u.test(text)
+                        || !/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji_Modifier}\uFE0F\u200D\s\d]+$/u.test(text)) continue;
+                let target = null;
+                for (let node = el.parentElement; node && node !== pane; node = node.parentElement) {
+                    const articles = node.querySelectorAll('[role="article"]');
+                    if (articles.length > 1) break;
+                    if (articles.length === 1) {
+                        if (articles[0].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) target = articles[0];
+                        break;
+                    }
+                }
+                if (!target) continue;
+                const g = rect(el);
+                items.push({order: order++, article: false, ...g, text: text,
+                            reaction: true, target: target});
+                continue;
+            }
             if (el.querySelector('[dir="auto"]') !== null) continue;   // not a leaf
             if (el.closest('[role="article"]') !== null) continue;     // inside a message
             const g = rect(el);
@@ -284,6 +305,8 @@ JS_RAW = r"""() => {
         OUT.outside = items.filter(i => !i.article).map(i => ({
             order: i.order, left: i.left, width: i.width,
             centre: i.centre, laid: i.laid, text: i.text,
+            ...(i.reaction ? {reaction: true,
+                target_order: items.find(a => a.article && a.node === i.target)?.order} : {}),
         }));
         OUT.article_orders = items.filter(i => i.article).map(i => i.order);
     }
@@ -450,6 +473,12 @@ def _outside_kind(text: str, laid: bool, width_ratio: float) -> tuple[str | None
     return "system", "system"
 
 
+def _outside_action(leaf, pane_w):
+    if leaf.get('reaction'):
+        return 'reaction', 'reaction'
+    return _outside_kind(leaf['text'], leaf['laid'], (leaf['width'] / pane_w) if pane_w else 0.0)
+
+
 def interpret_read(
     raw: dict, thread_id: str | None, navigations_used: int = 0,
     extra_detail: str = "",
@@ -497,10 +526,7 @@ def interpret_read(
             leaf = outside.get(gap_order)
             if not leaf:
                 continue
-            action, kind = _outside_kind(
-                leaf["text"], leaf["laid"],
-                (leaf["width"] / pane_w) if pane_w else 0.0,
-            )
+            action, kind = _outside_action(leaf, pane_w)
             text = normalize(leaf["text"])
             if action == "reply_to":
                 pending_reply_to = text
@@ -508,7 +534,8 @@ def interpret_read(
                 events.append(ObservedEvent(
                     position=len(events), sender="unknown", kind="reaction",
                     text=text, laid_out=bool(leaf["laid"]),
-                    evidence={"source": "outside_article", "order": gap_order},
+                    evidence={"source": "outside_article", "order": gap_order,
+                              **({"target_order": leaf['target_order']} if 'target_order' in leaf else {})},
                 ))
             elif action == "system" and text:
                 events.append(ObservedEvent(
@@ -555,15 +582,14 @@ def interpret_read(
         leaf = outside.get(gap_order)
         if not leaf:
             continue
-        action, kind = _outside_kind(
-            leaf["text"], leaf["laid"], (leaf["width"] / pane_w) if pane_w else 0.0
-        )
+        action, kind = _outside_action(leaf, pane_w)
         text = normalize(leaf["text"])
         if action == "reaction" and text:
             events.append(ObservedEvent(
                 position=len(events), sender="unknown", kind="reaction",
                 text=text, laid_out=bool(leaf["laid"]),
-                evidence={"source": "outside_article", "order": gap_order},
+                evidence={"source": "outside_article", "order": gap_order,
+                          **({"target_order": leaf['target_order']} if 'target_order' in leaf else {})},
             ))
         elif action == "system" and text:
             events.append(ObservedEvent(

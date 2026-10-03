@@ -289,6 +289,27 @@ class B03KindsTest(BrowserCase):
         event = (await self.read()).events[0]
         self.assertEqual((event.kind, event.media_label), ('media', 'post'))
 
+    async def test_unread_divider_is_not_a_system_event(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            const el = document.createElement('span'); el.setAttribute('dir', 'auto');
+            el.textContent = 'New messages'; document.querySelector('.pane').prepend(el);
+        }""")
+        self.assertNotIn('New messages', [event.text for event in (await self.read()).events])
+
+    async def test_adjacent_emoji_reaction_button_is_not_a_text_message(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            const art = document.querySelector('[role="article"]');
+            const badge = document.createElement('div'); badge.setAttribute('role', 'button');
+            badge.innerHTML = '<div role="none"><span>👍</span></div>';
+            art.parentElement.append(badge);
+        }""")
+        result = await self.read()
+        badge = next(event for event in result.events if event.text == '👍')
+        self.assertEqual((badge.kind, badge.sender), ('reaction', 'unknown'))
+        self.assertEqual(badge.evidence['target_order'], result.events[0].evidence['order'])
+
     async def test_live_reel_icon_and_creator_links_do_not_become_text_or_participants(self):
         await self.open_fixture("thread_1to1.html")
         await self.page.evaluate("""() => {
