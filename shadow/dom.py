@@ -127,6 +127,7 @@ JS_RAW = r"""() => {
     };
     const leavesOf = root => [...root.querySelectorAll('[dir="auto"]')]
         .filter(el => el.querySelector('[dir="auto"]') === null);
+    const quoteNodes = new Set();
     const rect = el => {
         const r = el.getBoundingClientRect();
         const laid = r.width > 0 && r.height > 0;
@@ -236,11 +237,10 @@ JS_RAW = r"""() => {
 
         for (const art of pane.querySelectorAll('[role="article"]')) {
             const g = rect(art);
-            const parts = leavesOf(art).map(textOf).filter(Boolean);
             // A quoted reply target is rendered as its own leaf; it is evidence
             // about the message, not the message text.
             let replyTo = null;
-            for (const q of art.querySelectorAll('[role="blockquote"]')) {
+            for (const q of art.querySelectorAll('blockquote, [role="blockquote"]')) {
                 const t = leavesOf(q).map(textOf).filter(Boolean).join(' ');
                 if (t) { replyTo = t; break; }
             }
@@ -256,11 +256,11 @@ JS_RAW = r"""() => {
                 if (!/^(?:.{1,100} replied to (?:you|yourself)|you replied to .{1,100})(?: · \d+[smhdw])?$/i.test(markerText)) continue;
                 const label = mediaOf(quote);
                 const text = leavesOf(quote).map(textOf).filter(Boolean).join(' ');
-                if (!label && /\breacted\b|liked a message|^seen\b/i.test(text)) continue;
                 replyTo = label ? '[quoted ' + label + ']' : text || null;
+                if (replyTo) quoteNodes.add(quote);
             }
             const own = leavesOf(art)
-                .filter(el => !el.closest('[role="blockquote"]'))
+                .filter(el => !el.closest('blockquote, [role="blockquote"]'))
                 .map(textOf).filter(Boolean);
             // Large emoji-only bubbles have no dir=auto. Their labelled
             // role=none content is still text, not an unsupported empty card.
@@ -288,6 +288,7 @@ JS_RAW = r"""() => {
         for (const el of pane.querySelectorAll('[role="article"], [dir="auto"], [role="button"]')) {
             if (el.getAttribute('role') === 'article') { items.push({order: order++, article: true, node: el}); continue; }
             if (el.closest('[role="article"]') !== null) continue;
+            if ([...quoteNodes].some(q => q.contains(el))) continue;
             if (el.getAttribute('role') === 'button') {
                 if (el.querySelector('[dir="auto"], [role="article"], [role="button"]') || el.closest('[dir="auto"]')) continue;
                 const text = textOf(el);
@@ -324,14 +325,15 @@ JS_RAW = r"""() => {
                 target_order: items.find(a => a.article && a.node === i.target)?.order} : {}),
         }));
         OUT.article_orders = items.filter(i => i.article).map(i => i.order);
+        // A receipt is visible thread chrome, not a typed message, quoted
+        // message or inbox preview that happens to say "Seen".
+        OUT.seen = OUT.outside.some(i => i.laid && !i.reaction
+            && /^seen(?: by .*| just now| \d+\s*[smhdw](?: ago)?)?$/i.test(i.text));
     }
 
     const box = document.querySelector('div[contenteditable="true"][aria-label="Message"]');
     OUT.composer_text = box ? (box.innerText || '').trim() : '';
 
-    const allText = [];
-    for (const el of document.querySelectorAll('[dir="auto"]')) allText.push(textOf(el));
-    OUT.seen = allText.some(t => /^seen(?: by .*| just now| \d+\s*[smhdw](?: ago)?)?$/i.test(t));
     return OUT;
 }"""
 
@@ -452,7 +454,7 @@ def inbox_status(raw: dict) -> tuple[ReadStatus, str]:
     if not raw.get("rows"):
         return "empty_verified", "thread_list_rendered_no_rows"
     if raw.get("seen"):
-        return "receipts_visible", "seen_leaf_in_page"
+        return "receipts_visible", "seen_leaf_in_thread"
     return "ok", ""
 
 
@@ -507,7 +509,7 @@ def interpret_read(
                           detail="message_pane_missing")
     if raw.get("seen"):
         return ReadResult(status="receipts_visible", thread_id=thread_id,
-                          navigations_used=navigations_used, detail="seen_leaf_in_page")
+                          navigations_used=navigations_used, detail="seen_leaf_in_thread")
 
     pane = raw.get("pane") or {}
     pane_left = pane.get("left", 0.0)

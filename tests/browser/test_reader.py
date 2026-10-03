@@ -267,6 +267,32 @@ class B03KindsTest(BrowserCase):
         }""")
         self.assertEqual((await self.read()).status, 'receipts_visible')
 
+    async def test_seen_message_or_inbox_preview_is_not_a_receipt(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            document.querySelector('[role="article"] [dir="auto"]').textContent = 'Seen';
+            document.querySelector('.preview').setAttribute('dir', 'auto');
+            document.querySelector('.preview').textContent = 'Seen 1h ago';
+        }""")
+        result = await self.read()
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(result.events[0].text, 'Seen')
+
+    async def test_adjacent_text_quote_is_context_not_system_event(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            const wrap = document.createElement('div');
+            wrap.innerHTML = '<div><span dir="auto">Test Contact replied to you</span></div>'
+                + '<div><span dir="auto">Seen</span></div>'
+                + '<div><div role="article"><span dir="auto">reply text</span></div></div>';
+            document.querySelector('.pane').prepend(wrap);
+        }""")
+        result = await self.read()
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(result.events[0].text, 'reply text')
+        self.assertEqual(result.events[0].reply_to_text, 'Seen')
+        self.assertNotIn('Seen', [event.text for event in result.events])
+
     async def test_large_emoji_only_bubble_without_dir_auto_is_read(self):
         await self.open_fixture("thread_1to1.html")
         await self.page.evaluate("""() => {

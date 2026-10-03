@@ -25,6 +25,7 @@ __pycache__/
 /captures/
 /screenshots/
 /traces/
+/tmp-dom-repos.*/
 /eval-results/
 /graphify-out/
 /.reticle/
