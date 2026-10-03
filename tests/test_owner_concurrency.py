@@ -13,6 +13,20 @@ from test_observe import LifecycleBrowser
 
 
 class OwnerConcurrencyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_background_worker_failure_is_reported_and_closes_browser(self):
+        with tempfile.TemporaryDirectory() as directory, open_storage(directory) as storage:
+            class BrokenTransport:
+                async def poll_once_async(self, handler):
+                    raise ValueError("fictional invalid update")
+                def _post(self, method, **fields):
+                    return {}
+            browser = LifecycleBrowser()
+            await asyncio.wait_for(observe_loop(storage, browser, Settings(), "fictional",
+                owner_transport=BrokenTransport(), owner_user_id=11, owner_chat_id=22), timeout=2)
+            self.assertEqual(storage.get_runtime()["pause_reason"], "background_worker_failed")
+            self.assertTrue(browser.closed)
+            self.assertTrue(any(alert["reason"] == "background_worker_failed" for alert in storage.alerts()))
+
     async def test_pause_is_processed_during_model_call(self):
         with tempfile.TemporaryDirectory() as directory, open_storage(directory) as storage:
             cid = storage.get_or_create_conversation("fictional", "100200300", "Test One")

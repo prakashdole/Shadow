@@ -98,6 +98,18 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
                 await asyncio.sleep(max(1, settings.pane_check_interval))
 
         alert_task = asyncio.create_task(deliver_alerts())
+    def worker_finished(task):
+        if task.cancelled():
+            return
+        failure = task.exception()
+        if failure is not None:
+            coordinator.pause("background_worker_failed")
+            storage.raise_alert(dedupe_key="background_worker_failed", tier="urgent",
+                                reason="background_worker_failed")
+
+    for task in (owner_task, alert_task):
+        if task is not None:
+            task.add_done_callback(worker_finished)
     try:
         initial = await browser.start()
         if initial.status in GLOBAL_PAUSE_STATUSES:
@@ -110,7 +122,13 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
             report = await coordinator.tick_discover()
             if report.stopped_reason or once:
                 return report
-            await asyncio.sleep(settings.inbox_check_interval)
+            delay = asyncio.create_task(asyncio.sleep(settings.inbox_check_interval))
+            workers = {task for task in (owner_task, alert_task) if task is not None}
+            try:
+                await asyncio.wait({delay, *workers}, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                delay.cancel()
+                await asyncio.gather(delay, return_exceptions=True)
     finally:
         if controls is not None:
             controls.close()

@@ -88,7 +88,8 @@ class OwnerCommands:
     def _execute(self, command: str, arg: str, *, update_id=None) -> str:
         if command == "/help":
             return ("/status /pause /resume /mode observe /approve <thread-id> "
-                    "/ignore <thread-id> /alerts /ack <alert-id> /digest /memory <thread-id> "
+                    "/ignore <thread-id> /pause <thread-id> /resume <thread-id> /scope add|remove <thread-id> "
+                    "/alerts /ack <alert-id> /digest /memory <thread-id> "
                     "/correct <thread-id|global> <dimension> <value> /undo <rule-id> "
                     "/accept-fact <fact-id> /forget <fact|rule> <id>. Sending and autonomous mode are locked.")
         if command == "/status":
@@ -98,16 +99,26 @@ class OwnerCommands:
             pending = len(self.storage.work_in_states(("pending", "due", "awaiting_approval")))
             held = len(self.storage.work_in_states(("held", "owner_active")))
             return (f"mode={runtime.get('mode', 'observe')} "
+                    f"scope={runtime.get('autonomy_scope', 'none')} "
                     f"pause={runtime.get('pause_reason') or 'none'} "
                     f"pending={pending} held={held}; " + json.dumps(metrics(self.storage, self.coordinator.clock.now())))
         if command == "/pause":
             if arg:
-                return "Use /pause without arguments; per-thread pause is not installed."
+                conversation = self._conversation(arg)
+                if not conversation:
+                    return "No exact observed thread ID in the bound account; no change."
+                self.coordinator.pause_contact(conversation["id"])
+                return f"Thread {arg} paused; pending work cancelled. Submitted messages cannot be recalled."
             self.coordinator.pause("owner")
             return "Paused; in-flight browser submission may remain uncertain."
         if command == "/resume":
             if arg:
-                return "Use /resume without arguments."
+                conversation = self._conversation(arg)
+                if not conversation:
+                    return "No exact observed thread ID in the bound account; no change."
+                changed = self.coordinator.resume_contact(conversation["id"])
+                return (f"Thread {arg} owner pause/takeover cleared; fresh assessment required."
+                        if changed else "Refused: unresolved send, identity or policy hold remains.")
             if (self.storage.get_runtime() or {}).get("pause_reason") != "owner":
                 return "Refused: only an owner pause can be cleared here; recheck browser health."
             self.coordinator.resume()
@@ -117,6 +128,18 @@ class OwnerCommands:
                 return "Refused: assisted/autonomous require qualification and controlled live gates."
             self.coordinator.set_mode("observe")
             return "Mode observe: no Instagram sending."
+        if command == "/scope":
+            parts = arg.split()
+            if len(parts) != 2 or parts[0] not in ("add", "remove"):
+                return "Use /scope add|remove <exact thread-id>."
+            conversation = self._conversation(parts[1])
+            if not conversation:
+                return "No exact observed thread ID in the bound account; no change."
+            try:
+                self.coordinator.edit_scope(conversation["id"], add=parts[0] == "add")
+            except ValueError as exc:
+                return str(exc)
+            return "Scope updated; affected drafts cancelled. Live submission remains locked."
         if command in ("/approve", "/ignore"):
             conversation = self._conversation(arg)
             if not conversation:
@@ -125,15 +148,9 @@ class OwnerCommands:
             if command == "/approve":
                 if conversation["contact_status"] != "unknown_pending":
                     return "No change: contact is not pending approval."
-                self.storage.set_contact_status(cid, "approved_unknown", "owner_command")
+                self.coordinator.approve_contact(cid)
                 return f"Thread {arg} approved for future decisions; no message queued."
-            self.storage.set_contact_status(cid, "excluded", "owner_command")
-            self.storage.cancel_outbox_items(cid, "owner_ignore")
-            self.storage.cancel_decisions(cid, ("recorded", "awaiting_approval", "approved", "queued"))
-            work = self.storage.get_work(cid)
-            if work:
-                self.storage.update_work(cid, state="held", held_reason="excluded",
-                                         cancel_generation=work["cancel_generation"] + 1)
+            self.coordinator.ignore_contact(cid)
             return f"Thread {arg} excluded; pending work cancelled."
         if command == "/alerts":
             counts = {tier: 0 for tier in ("urgent", "action", "info")}

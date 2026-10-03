@@ -48,6 +48,23 @@ class OwnerTests(unittest.TestCase):
         self.assertIn("Refused", self.owner.process(self.update(3, "/mode autonomous")))
         self.assertIn("no Instagram send", self.owner.process(self.update(4, "/send 123 hi")))
         self.assertIn("excluded", self.owner.process(self.update(5, "/ignore 123")))
+        self.assertEqual(self.storage.get_work(cid)["held_reason"], "contact_excluded")
+
+    def test_exact_thread_pause_scope_and_safe_resume(self):
+        cid = self.storage.get_or_create_conversation("acct-test", "123", "Friend")
+        other = self.storage.get_or_create_conversation("acct-test", "456", "Friend")
+        self.storage.set_contact_status(cid, "known")
+        self.storage.set_contact_status(other, "known")
+        self.storage.set_work(cid, inbound_revision=1, state="pending")
+        self.assertIn("Scope updated", self.owner.process(self.update(1, "/scope add 123")))
+        self.assertTrue(self.coordinator.in_autonomy_scope(self.storage.get_conversation(cid)))
+        self.assertFalse(self.coordinator.in_autonomy_scope(self.storage.get_conversation(other)))
+        self.assertIn("paused", self.owner.process(self.update(2, "/pause 123")))
+        self.assertEqual(self.storage.get_conversation(cid)["paused_reason"], "owner_pause")
+        self.assertIn("cleared", self.owner.process(self.update(3, "/resume 123")))
+        self.assertEqual(self.storage.get_work(cid)["state"], "pending")
+        self.storage.update_work(cid, state="held", held_reason="uncertain_send")
+        self.assertIn("Refused", self.owner.process(self.update(4, "/resume 123")))
         self.assertEqual(self.storage.get_work(cid)["state"], "held")
 
     def test_failed_ack_is_retried_without_reexecuting_command(self):

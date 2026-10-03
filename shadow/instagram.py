@@ -371,6 +371,9 @@ class InstagramBrowser:
         """Recheck the account before every read and submission checkpoint."""
         if self._expected_account is None:
             return None
+        screen = interpret_inbox(await self.page.evaluate(JS_RAW))
+        if screen.status in ("login_required", "challenge", "receipts_visible"):
+            return screen
         found = await self.page.evaluate(_JS_NAV_HANDLE)
         if not found:
             self._account_detail = "account_unverified"

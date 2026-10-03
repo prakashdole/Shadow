@@ -240,15 +240,43 @@ class Coordinator:
                 )
 
     def in_autonomy_scope(self, conversation: dict) -> bool:
-        scope = self.settings.autonomy_scope
+        scope = (self.storage.get_runtime() or {}).get("autonomy_scope") or self._scope_text()
         if scope == "none":
             return False
         if scope == "known":
             return conversation["contact_status"] in ("known", "approved_unknown")
-        names = [str(item).strip() for item in scope]
-        label = (conversation.get("label") or "").strip()
+        names = scope.split(",")
         thread_id = str(conversation.get("thread_id") or "")
-        return label in names or thread_id in names
+        return thread_id in names
+
+    def edit_scope(self, conversation_id, *, add):
+        conversation = self.storage.get_conversation(conversation_id)
+        if (not conversation or conversation["account_id"] != self.account_id
+                or conversation["contact_status"] not in ("known", "approved_unknown")):
+            raise ValueError("Scope requires an approved exact thread in the bound account")
+        if self.storage.get_runtime() is None:
+            self._stored_account_id()
+        runtime = self.storage.get_runtime()
+        scope = runtime["autonomy_scope"]
+        if scope == "known":
+            names = {row[0] for row in self.storage.conn.execute(
+                "SELECT thread_id FROM conversations WHERE account_id = ? AND contact_status IN ('known','approved_unknown')",
+                (self.account_id,))}
+        else:
+            names = set() if scope == "none" else set(scope.split(","))
+        if add:
+            names.add(conversation["thread_id"])
+        else:
+            names.discard(conversation["thread_id"])
+        self.storage.set_runtime(account_id=self.account_id, mode=runtime["mode"],
+                                 autonomy_scope=",".join(sorted(names)) or "none",
+                                 pause_reason=runtime["pause_reason"], config_digest=runtime["config_digest"])
+        self.storage.cancel_outbox_items(conversation_id, "scope_changed")
+        self.storage.cancel_decisions(conversation_id, ("recorded", "awaiting_approval", "approved", "queued"))
+        work = self.storage.get_work(conversation_id)
+        if work:
+            self.storage.update_work(conversation_id, state="held", held_reason="scope_changed",
+                                     cancel_generation=work["cancel_generation"] + 1)
 
     # --- startup ---------------------------------------------------
     async def startup(self) -> TickReport:
@@ -1228,14 +1256,33 @@ class Coordinator:
         return marked
 
     def resume_contact(self, conversation_id: int) -> None:
-        """`/resume <contact>`: ends a takeover window early."""
-        self.storage.set_owner_active_until(conversation_id, None)
+        """Clear only an owner pause/takeover, never an uncertain send or DOM hold."""
+        conversation = self.storage.get_conversation(conversation_id)
+        if not conversation or conversation["contact_status"] == "excluded":
+            return False
         work = self.storage.get_work(conversation_id)
-        if work is not None and work["state"] == "owner_active":
+        if (conversation["paused_reason"] not in (None, "owner_pause")
+                or any(item["state"] in ("uncertain", "held", "attempting")
+                       for item in self.storage.outbox_items(conversation_id))
+                or work and work["state"] == "held" and work["held_reason"] not in ("owner_pause", "owner_active", "owner_takeover")):
+            return False
+        self.storage.set_owner_active_until(conversation_id, None)
+        self.storage.set_paused_reason(conversation_id, None)
+        if work is not None and work["state"] in ("owner_active", "held"):
             self.storage.update_work(
                 conversation_id, state="pending", held_reason=None,
                 cancel_generation=work["cancel_generation"] + 1,
             )
+        return True
+
+    def pause_contact(self, conversation_id):
+        self.storage.set_paused_reason(conversation_id, "owner_pause")
+        self.storage.cancel_outbox_items(conversation_id, "owner_pause")
+        self.storage.cancel_decisions(conversation_id, ("recorded", "awaiting_approval", "approved", "queued"))
+        work = self.storage.get_work(conversation_id)
+        if work:
+            self.storage.update_work(conversation_id, state="held", held_reason="owner_pause",
+                                     cancel_generation=work["cancel_generation"] + 1)
 
     def enqueue_owner_send(self, conversation_id: int, text: str) -> tuple[int, int]:
         return OB.enqueue_owner_send(

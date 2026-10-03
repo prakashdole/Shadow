@@ -13,6 +13,9 @@ class AccountPage:
         self.handles = iter(handles)
 
     async def evaluate(self, _script):
+        from shadow.dom import JS_RAW
+        if _script == JS_RAW:
+            return {"path": "/direct/t/12345/"}
         return next(self.handles)
 
 
@@ -61,3 +64,14 @@ class TestAccountBinding(unittest.IsolatedAsyncioTestCase):
 
         with patch("shadow.instagram._send_on_page", new=send_stub):
             await browser.send_one("12345", "not sent", allow)
+
+    async def test_login_and_challenge_take_precedence_over_missing_account(self):
+        class ScreenPage(AccountPage):
+            path = "/accounts/login/"
+            async def evaluate(inner, _script):
+                return {"path": inner.path}
+        browser = InstagramBrowser(expected_account="fictional_owner")
+        browser.page = ScreenPage()
+        self.assertEqual((await browser._check_account()).status, "login_required")
+        browser.page.path = "/challenge/"
+        self.assertEqual((await browser._check_account()).status, "challenge")
