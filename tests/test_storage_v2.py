@@ -66,7 +66,7 @@ class TestFreshV2(V2Case):
         self.storage = ST.open_storage(self.dir)
         self.assertEqual(self.storage.get_events(cid)[0]["text"], "fictional")
         self.assertEqual(self.storage.conn.execute("PRAGMA foreign_key_check").fetchall(), [])
-        backups = list((self.dir / ST.BACKUP_DIR).glob("*.sqlite3"))
+        backups = list((self.dir / ST.BACKUP_DIR).glob("pre-migration-v7-*.sqlite3"))
         self.assertTrue(backups)
         with sqlite3.connect(backups[-1]) as backup:
             self.assertEqual(backup.execute("PRAGMA user_version").fetchone()[0], 7)
