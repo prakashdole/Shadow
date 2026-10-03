@@ -1,0 +1,83 @@
+"""Focused checks for the untrusted model-output boundary."""
+
+import json
+import asyncio
+import tempfile
+import unittest
+
+from shadow.contracts import ContextEvent, DecisionInput
+from shadow.decisions import ModelResponse, StructuredDecisions, parse_role
+from shadow.model_bedrock import BedrockTransport
+from shadow.settings import Settings
+from shadow.storage import open_storage
+
+
+class DecisionBoundaryTests(unittest.TestCase):
+    def test_reply_accepts_exact_schema(self):
+        raw = json.dumps(dict(schema_version=1, action="reply", reason_code="ordinary",
+                              messages=["kal?"], evidence_event_ids=[4], used_memory_ids=[]))
+        self.assertEqual(parse_role("reply", raw, {4}).value.messages, ("kal?",))
+
+    def test_rejects_prose_duplicates_partial_and_unknown_ids(self):
+        valid = '{"schema_version":1,"action":"skip","reason_code":"done","messages":[],"evidence_event_ids":[],"used_memory_ids":[]}'
+        for raw in (valid + " extra", valid[:-1], valid.replace('"action":"skip"', '"action":"skip","action":"reply"'),
+                    valid.replace('"evidence_event_ids":[]', '"evidence_event_ids":[9]'),
+                    valid.replace('"messages":[]', '"messages":["no"]')):
+            with self.subTest(raw=raw):
+                self.assertEqual(parse_role("reply", raw, {4}).failure, "invalid_output")
+
+    def test_rejects_overlong_and_wrong_types(self):
+        raw = dict(schema_version=1, action="reply", reason_code="ordinary",
+                   messages=["x" * 501], evidence_event_ids=[4], used_memory_ids=[])
+        self.assertEqual(parse_role("reply", json.dumps(raw), {4}).failure, "invalid_output")
+        raw["messages"] = [123]
+        self.assertEqual(parse_role("reply", json.dumps(raw), {4}).failure, "invalid_output")
+
+    def test_risk_requires_exact_fields_and_enums(self):
+        raw = dict(schema_version=1, risk="distress", reason_code="urgent_distress",
+                   action_hint="urgent", signals=[], evidence_event_ids=[4])
+        self.assertEqual(parse_role("risk", json.dumps(raw), {4}).value.action_hint, "urgent")
+        raw["risk"] = "safe enough"
+        self.assertEqual(parse_role("risk", json.dumps(raw), {4}).failure, "invalid_output")
+
+    def test_roles_budget_and_invalid_transport(self):
+        class Fake:
+            calls = []
+
+            async def generate(self, role, system, input_text):
+                self.calls.append(role)
+                if role == "risk":
+                    return ModelResponse(json.dumps(dict(schema_version=1, risk="none",
+                         reason_code="ordinary", action_hint="proceed", signals=[],
+                         evidence_event_ids=[4])), {}, "fake", "end_turn")
+                return ModelResponse("{", {}, "fake", "end_turn")
+
+        with tempfile.TemporaryDirectory() as directory, open_storage(directory) as storage:
+            fake = Fake()
+            decisions = StructuredDecisions(fake, storage, Settings(risk_call_budget=((1, 3600),)))
+            data = DecisionInput(1, "known", {}, {}, (ContextEvent(4, "contact", "text", "hello"),), ())
+            assessment = asyncio.run(decisions.assess(data))
+            self.assertEqual(assessment.value.action_hint, "proceed")
+            self.assertEqual(asyncio.run(decisions.draft(data, assessment.value)).failure, "invalid_output")
+            self.assertEqual(asyncio.run(decisions.assess(data)).failure, "budget_exhausted")
+            self.assertEqual(fake.calls, ["risk", "reply"])
+
+    def test_bedrock_requires_models_and_passes_only_supported_arguments(self):
+        class Client:
+            def converse(self, **kw):
+                self.kw = kw
+                return {"stopReason": "end_turn", "output": {"message": {
+                    "content": [{"text": "{}"}]}}, "usage": {"inputTokens": 3}}
+
+        with self.assertRaises(ValueError):
+            BedrockTransport(region="us-east-1", models={"reply": "x"})
+        client = Client()
+        transport = BedrockTransport(region="us-east-1", models=dict.fromkeys(
+            ("risk", "reply", "extraction"), "profile-id"), client=client)
+        result = asyncio.run(transport.generate("risk", "system", "data"))
+        self.assertEqual(result.model, "profile-id")
+        self.assertEqual(set(client.kw), {"modelId", "system", "messages", "inferenceConfig"})
+
+
+if __name__ == "__main__":
+    unittest.main()

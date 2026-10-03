@@ -55,6 +55,8 @@ from shadow.contracts import (
     DecisionPort,
     InboxRow,
     ReadResult,
+    RiskAssessment,
+    ReplyDraft,
 )
 from shadow.pacing import Clock, SystemClock
 from shadow.settings import Settings
@@ -686,8 +688,8 @@ class Coordinator:
         if assessed is None:
             self._hold(conversation_id, "assessment_timeout", report, tier="action")
             return
-        if assessed.failure is not None:
-            self._hold(conversation_id, f"assessment_{assessed.failure}", report, tier="action")
+        if assessed.failure is not None or assessed.role != "risk" or not isinstance(assessed.value, RiskAssessment):
+            self._hold(conversation_id, f"assessment_{assessed.failure or 'invalid_output'}", report, tier="action")
             return
         assessment = assessed.value
         decision_id = self._record_decision(conversation_id, work, "recorded", {
@@ -727,11 +729,19 @@ class Coordinator:
         if drafted is None:
             self._hold(conversation_id, "draft_timeout", report, tier="action")
             return
-        if drafted.failure is not None:
-            self._hold(conversation_id, f"draft_{drafted.failure}", report, tier="action")
+        if drafted.failure is not None or drafted.role != "reply" or not isinstance(drafted.value, ReplyDraft):
+            self._hold(conversation_id, f"draft_{drafted.failure or 'invalid_output'}", report, tier="action")
             return
         reply = drafted.value
-        if reply.action == "skip" or not reply.messages:
+        if (reply.action not in ("reply", "skip") or
+                (reply.action == "skip") != (not reply.messages) or
+                len(reply.messages) > self.settings.burst_max_items or
+                sum(len(m) for m in reply.messages) > self.settings.reply_max_chars or
+                any(not isinstance(m, str) or not m.strip() or
+                    len(m) > self.settings.bubble_max_chars for m in reply.messages)):
+            self._hold(conversation_id, "draft_invalid_output", report, tier="action")
+            return
+        if reply.action == "skip":
             self.storage.set_decision_status(decision_id, "done")
             self.storage.update_work(conversation_id, state="idle", held_reason=None)
             report.drafted += 1
@@ -790,12 +800,12 @@ class Coordinator:
                 conversation_id, state="awaiting_approval", held_reason=None
             )
             return
-        for index, message in enumerate(messages[: self.settings.burst_max_items]):
+        for index, message in enumerate(messages):
             self.storage.add_outbox_item(
                 decision_id=decision_id,
                 item_index=index,
                 conversation_id=conversation_id,
-                text=str(message)[: self.settings.bubble_max_chars],
+                text=message,
                 authority="autonomous",
                 revision=int(work["inbound_revision"]),
             )
