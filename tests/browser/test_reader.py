@@ -181,6 +181,15 @@ class B02IdentityTest(BrowserCase):
 class B03KindsTest(BrowserCase):
     """B03: direction, multiline, emoji, quotes, edits, system, media."""
 
+    async def test_relative_age_seen_receipt_is_a_pause_not_system_text(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            const seen = document.createElement('div');
+            seen.setAttribute('dir', 'auto'); seen.textContent = 'Seen 1h ago';
+            document.querySelector('.pane').append(seen);
+        }""")
+        self.assertEqual((await self.read()).status, 'receipts_visible')
+
     async def test_large_emoji_only_bubble_without_dir_auto_is_read(self):
         await self.open_fixture("thread_1to1.html")
         await self.page.evaluate("""() => {

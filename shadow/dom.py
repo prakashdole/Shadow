@@ -63,7 +63,7 @@ _REACTION_TEXT = re.compile(r"\breacted\b|\bliked a message\b|\byou reacted\b", 
 _REPLY_TO_TEXT = re.compile(
     r"replied to (?:you|yourself)\b|^you replied to\b|\breplied to @", re.I
 )
-_SEEN_TEXT = re.compile(r"^seen(?: by .*| just now)?$", re.I)
+_SEEN_TEXT = re.compile(r"^seen(?: by .*| just now| \d+\s*[smhdw](?: ago)?)?$", re.I)
 _UNAVAILABLE = re.compile(r"^(reel|post|story) unavailable$", re.I)
 _AGE_TAIL = re.compile(r"(?:\s*·\s*|\s+)\d+[smhdw]\s*$", re.I)
 _UNREAD_TOKEN = re.compile(r"(^|\s)unread(\s|$)", re.I)
@@ -268,7 +268,7 @@ JS_RAW = r"""() => {
 
     const allText = [];
     for (const el of document.querySelectorAll('[dir="auto"]')) allText.push(textOf(el));
-    OUT.seen = allText.some(t => /^seen(?: by .*| just now)?$/i.test(t));
+    OUT.seen = allText.some(t => /^seen(?: by .*| just now| \d+\s*[smhdw](?: ago)?)?$/i.test(t));
     return OUT;
 }"""
 
