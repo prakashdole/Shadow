@@ -214,14 +214,15 @@ class StructuredDecisions:
                                          "extraction": "extraction_call_budget"}[role])
         if not self.storage.try_consume_rates(f"model_{role}", budget):
             return RoleOutcome(role=role, failure="budget_exhausted")
-        payload = {
-            "contact_status": data.contact_status,
-            "relationship": data.relationship,
-            "owner_profile": data.owner_profile,
-            "corrections": data.corrections,
-            "recent": [vars(event) for event in data.recent[-30:]],
-            "current_batch": [vars(event) for event in data.current_batch],
-        }
+        payload = {"current_batch": [vars(event) for event in data.current_batch]}
+        if role != "extraction":
+            payload.update({
+                "contact_status": data.contact_status,
+                "relationship": data.relationship if role == "reply" else {},
+                "owner_profile": data.owner_profile if role == "reply" else {},
+                "corrections": data.corrections if role == "reply" else (),
+                "recent": [vars(event) for event in data.recent[-30 if role == "reply" else -6:]],
+            })
         if assessment:
             payload["assessment"] = vars(assessment) | {"signals": sorted(assessment.signals)}
         try:

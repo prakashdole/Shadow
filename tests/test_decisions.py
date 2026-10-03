@@ -97,6 +97,20 @@ class DecisionBoundaryTests(unittest.TestCase):
                     outcome = asyncio.run(decisions.assess(data))
                     self.assertEqual(outcome.value.action_hint, expected)
 
+    def test_extraction_receives_only_current_batch(self):
+        class Capture:
+            async def generate(self, role, system, input_text):
+                self.input = json.loads(input_text)
+                return ModelResponse('{"schema_version":1,"facts":[]}', {}, "fake", "end_turn")
+        with tempfile.TemporaryDirectory() as directory, open_storage(directory) as storage:
+            transport = Capture()
+            data = DecisionInput(1, "known", {"secret": "relationship"},
+                                 {"secret": "owner"},
+                                 (ContextEvent(4, "contact", "text", "new"),),
+                                 (ContextEvent(3, "contact", "text", "old"),))
+            asyncio.run(StructuredDecisions(transport, storage, Settings()).extract(data))
+            self.assertEqual(list(transport.input), ["current_batch"])
+
 
 if __name__ == "__main__":
     unittest.main()
