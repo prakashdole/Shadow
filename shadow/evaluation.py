@@ -63,6 +63,9 @@ def validate_dataset(cases):
             previous = event["time"]
         if not case["current_ids"] or any(type(item) is not int or item not in known for item in case["current_ids"]):
             raise ValueError("Current batch does not resolve to source events")
+        if (len(set(case["current_ids"])) != len(case["current_ids"])
+                or any(known[item]["sender"] != "contact" for item in case["current_ids"])):
+            raise ValueError("Current batch must contain distinct contact events")
         for surface in ("facts", "examples", "summaries"):
             if type(case.get(surface, [])) is not list:
                 raise ValueError("Invalid retrieval surface")
@@ -87,7 +90,8 @@ def decision_input(case):
                          case.get("relationship", {}), case.get("owner_profile", {}),
                          tuple(event for event in events if event.event_id in current),
                          tuple(event for event in events if event.event_id not in current),
-                         corrections=tuple(case.get("corrections", [])))
+                         corrections=tuple(case.get("corrections", [])),
+                         facts=tuple(case.get("facts", [])), examples=tuple(case.get("examples", [])))
 
 
 async def evaluate(cases, decisions, *, split="dev", repeats=1):
@@ -102,6 +106,7 @@ async def evaluate(cases, decisions, *, split="dev", repeats=1):
             data = decision_input(case)
             risk = await decisions.assess(data)
             actual, failure = "hold", risk.failure
+            messages = []
             if isinstance(risk.value, RiskAssessment) and not risk.failure:
                 assessment = risk.value
                 actual = "urgent" if assessment.action_hint == "urgent" else "hold"
@@ -110,8 +115,10 @@ async def evaluate(cases, decisions, *, split="dev", repeats=1):
                     failure = reply.failure
                     if isinstance(reply.value, ReplyDraft) and not reply.failure:
                         actual = reply.value.action
+                        messages = list(reply.value.messages)
             results.append({"id": case["id"], "repeat": repeat, "expected": case["expected"],
-                            "actual": actual, "category": case["category"], "failure": failure})
+                            "actual": actual, "category": case["category"], "failure": failure,
+                            "messages": messages})
     total = len(results)
     ordinary = [result for result in results if result["expected"] == "reply"]
     urgent = [result for result in results if result["expected"] == "urgent"]
@@ -156,6 +163,12 @@ def blind_pairs(pairs, *, seed):
 
 
 def rating_report(ratings, key):
+    if (type(key) is not list or any(type(pair) is not dict or set(pair) != {"id", "a", "b"}
+            or type(pair["id"]) is not str or {pair["a"], pair["b"]} != {"personalized", "baseline"}
+            for pair in key) or len({pair["id"] for pair in key}) != len(key)):
+        raise ValueError("Invalid or duplicate private answer key")
+    if type(ratings) is not list:
+        raise ValueError("Ratings must be a list")
     answers = {pair["id"]: pair for pair in key}
     rows, seen = [], set()
     for rating in ratings:
@@ -181,3 +194,39 @@ def rating_report(ratings, key):
                 "average": sum(row[dimension] for row in personalized) / len(rows) if rows else None,
             } for dimension in RATING_DIMENSIONS},
             "qualification": "pending_external", "minimum_owner_sample_met": len(rows) >= 40}
+
+
+def write_private_json(path, value):
+    """Never overwrite an evaluation artifact or put it in the checkout."""
+    import os
+    from pathlib import Path
+    from shadow.operations import private_destination
+
+    target = private_destination(path)
+    if not target.parent.is_dir():
+        raise ValueError("Create a private output directory first")
+    if os.name != "nt" and target.parent.stat().st_mode & 0o077:
+        raise ValueError("Output directory must be owner-only (0700)")
+    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(value, stream, ensure_ascii=False, sort_keys=True, indent=2)
+        stream.write("\n")
+    return Path(target)
+
+
+def prepare_ratings(pairs, directory, *, seed):
+    """Three separate private artifacts: rater view, answer key and score form."""
+    import os
+    from shadow.operations import private_destination
+
+    visible, key = blind_pairs(pairs, seed=seed)
+    target = private_destination(directory)
+    target.mkdir(mode=0o700)
+    os.chmod(target, 0o700)
+    write_private_json(target / "pairs.json", visible)
+    write_private_json(target / "answer-key.json", key)
+    template = [{"id": row["id"], "preferred": None,
+                 "scores": {side: dict.fromkeys(RATING_DIMENSIONS, None) for side in ("a", "b")}}
+                for row in visible]
+    write_private_json(target / "ratings.json", template)
+    return target

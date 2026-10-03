@@ -204,7 +204,8 @@ def import_history(source: str, dry_run: bool, i_have_a_verified_backup: bool) -
 @click.option("--split", type=click.Choice(["dev", "test"]), default="dev")
 @click.option("--repeats", type=click.IntRange(1, 3), default=1)
 @click.option("--with-model", is_flag=True, help="Explicitly authorize paid configured model calls.")
-def evaluate_command(dataset, split, repeats, with_model):
+@click.option("--output", type=click.Path(), help="New private report file outside checkout; required for model outputs.")
+def evaluate_command(dataset, split, repeats, with_model, output):
     """Validate causal data, or evaluate explicit models. Never contacts Instagram."""
     import json
     from pathlib import Path
@@ -217,6 +218,10 @@ def evaluate_command(dataset, split, repeats, with_model):
             click.echo(json.dumps({"dataset_digest": digest, "cases": len(cases),
                                    "status": "validated_inputs_only", "qualification": "pending_external"}))
             return
+        if not output:
+            raise ValueError("Private output path required")
+        from shadow.operations import private_destination
+        private_destination(output)
         from shadow.decisions import StructuredDecisions
         from shadow.model_bedrock import BedrockTransport
         from shadow.settings import data_dir, load_settings
@@ -225,12 +230,57 @@ def evaluate_command(dataset, split, repeats, with_model):
         models = {role: os.environ.get(f"SHADOW_{role.upper()}_MODEL", "").strip()
                   for role in ("risk", "reply", "extraction")}
         transport = BedrockTransport(region=os.environ.get("SHADOW_AWS_REGION", ""), models=models)
-        with open_storage(data_dir()) as storage:
+        import tempfile
+        from shadow.evaluation import write_private_json
+
+        with tempfile.TemporaryDirectory(prefix="shadow-eval-") as scratch, open_storage(scratch) as storage:
             decisions = StructuredDecisions(transport, storage, load_settings(data_dir()))
             report = asyncio.run(evaluate(cases, decisions, split=split, repeats=repeats))
-        click.echo(json.dumps(report, sort_keys=True))
+            report["role_calls"] = [dict(row) for row in storage.conn.execute("SELECT * FROM role_calls ORDER BY id")]
+        write_private_json(output, report)
+        click.echo(json.dumps({"dataset_digest": digest, "decisions": report["decisions"],
+                               "qualification": "pending_external", "report": "saved_privately"}, sort_keys=True))
     except (ValueError, OSError) as exc:
         raise click.ClickException("Evaluation refused: " + type(exc).__name__) from None
+
+
+@cli.group("ratings")
+def ratings_command():
+    """Prepare blinded private pairs and summarize real owner scores."""
+
+
+@ratings_command.command("prepare")
+@click.option("--pairs", required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option("--output-dir", required=True, type=click.Path())
+@click.option("--seed", required=True, type=int)
+def ratings_prepare(pairs, output_dir, seed):
+    import json
+    from pathlib import Path
+    from shadow.evaluation import prepare_ratings
+
+    try:
+        prepared = prepare_ratings(json.loads(Path(pairs).read_text(encoding="utf-8")), output_dir, seed=seed)
+    except (ValueError, TypeError, OSError):
+        raise click.ClickException("Rating preparation refused; check input and private destination.") from None
+    click.echo("Private pairs and score form created. Keep answer-key.json hidden from the rater.")
+
+
+@ratings_command.command("report")
+@click.option("--ratings", required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option("--key", required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option("--output", required=True, type=click.Path())
+def ratings_summary(ratings, key, output):
+    import json
+    from pathlib import Path
+    from shadow.evaluation import rating_report, write_private_json
+
+    try:
+        report = rating_report(json.loads(Path(ratings).read_text(encoding="utf-8")),
+                               json.loads(Path(key).read_text(encoding="utf-8")))
+        write_private_json(output, report)
+    except (ValueError, TypeError, OSError):
+        raise click.ClickException("Rating report refused; complete real owner scores and use a new private file.") from None
+    click.echo(f"ratings={report['ratings']}; report saved privately; qualification=pending_external")
 
 
 @cli.command("browser-login")

@@ -4,7 +4,7 @@ import asyncio
 import unittest
 
 from fake_ports import FakeDecisions
-from shadow.evaluation import RATING_DIMENSIONS, blind_pairs, evaluate, rating_report, validate_dataset, wilson
+from shadow.evaluation import RATING_DIMENSIONS, blind_pairs, evaluate, rating_report, validate_dataset, wilson, decision_input
 
 
 def fictional_case():
@@ -27,6 +27,16 @@ class EvaluationTests(unittest.TestCase):
     def test_cross_contact_and_heldout_derived_memory_rejected(self):
         case = fictional_case()
         case["facts"] = [{"contact_id": 2, "time": 1, "split": "train", "episode_id": "other", "source_ids": [1]}]
+        with self.assertRaises(ValueError):
+            validate_dataset([case])
+
+    def test_evaluation_passes_validated_retrieval_to_decisions(self):
+        case = fictional_case()
+        case["facts"] = [{"id": 8, "value_text": "fictional tea preference", "contact_id": 1,
+                          "time": 1, "split": "train", "episode_id": "training", "source_ids": [1]}]
+        validate_dataset([case])
+        self.assertEqual(decision_input(case).facts[0]["id"], 8)
+        case["current_ids"] = [1, 1]
         with self.assertRaises(ValueError):
             validate_dataset([case])
 
