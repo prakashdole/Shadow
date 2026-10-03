@@ -104,6 +104,13 @@ class B01StatusTest(BrowserCase):
         self.assertTrue(result.events)
         self.assertTrue(result.complete)
 
+    async def test_real_origin_transient_list_is_not_verified_empty(self):
+        self.page = await self._browser.new_page()
+        await self.page.route('https://www.instagram.com/**',
+                              lambda route: route.fulfill(path=str(FIXTURES / 'inbox_empty.html')))
+        await self.page.goto('https://www.instagram.com/direct/inbox/')
+        self.assertEqual((await self.inbox()).status, 'dom_unknown')
+
 
 class B02IdentityTest(BrowserCase):
     """B02: a label is not an identity. Duplicate labels and id prefixes hold."""
@@ -532,6 +539,160 @@ class B04CompletenessTest(BrowserCase):
             [(e.position, e.sender, e.kind, normalize(e.text)) for e in first.events],
             [(e.position, e.sender, e.kind, normalize(e.text)) for e in second.events],
         )
+
+    async def test_delayed_history_load_waits_and_reaches_requested_count(self):
+        from shadow.instagram import InstagramBrowser
+
+        await self.open_fixture('thread_long.html')
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            let loaded = false;
+            pane.addEventListener('scroll', () => {
+                if (loaded) return; loaded = true; pane.setAttribute('aria-busy', 'true');
+                setTimeout(() => {
+                    const art = document.createElement('div'); art.setAttribute('role', 'article');
+                    art.innerHTML = '<span dir="auto">older unique message</span>';
+                    pane.prepend(art); pane.removeAttribute('aria-busy');
+                }, 450);
+            });
+        }""")
+        adapter = InstagramBrowser()
+        adapter.page = self.page
+        from unittest.mock import patch
+        with patch.object(adapter, '_assert_on_site'):
+            result = await adapter._load_history(46)
+        self.assertIsNotNone(result, 'history must return the collected read, not dispatch-only')
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(result.detail, 'history_count_reached')
+        self.assertEqual(len(result.events), 46)
+        self.assertEqual(result.events[0].text, 'older unique message')
+        self.assertEqual(sum(e.text == 'ok' for e in result.events), 2)
+
+    async def test_history_count_already_loaded_does_not_scroll(self):
+        from shadow.instagram import InstagramBrowser
+
+        await self.open_fixture('thread_long.html')
+        before = await self.page.evaluate("document.querySelector('.pane').scrollTop")
+        adapter = InstagramBrowser(); adapter.page = self.page
+        result = await adapter._load_history(20)
+        self.assertEqual(result.detail, 'history_count_reached')
+        self.assertEqual(await self.page.evaluate("document.querySelector('.pane').scrollTop"), before)
+
+    async def test_readiness_does_not_accept_a_transient_empty_pane(self):
+        from shadow.instagram import InstagramBrowser
+
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane'); pane.innerHTML = '';
+            setTimeout(() => {
+                pane.innerHTML = '<div role="article"><span dir="auto">late message</span></div>';
+            }, 1300);
+        }""")
+        adapter = InstagramBrowser(); adapter.page = self.page
+        from unittest.mock import patch
+        with patch.object(adapter, '_assert_on_site'):
+            self.assertTrue(await adapter._wait_readable(thread=True))
+        self.assertEqual((await self.read()).events[0].text, 'late message')
+
+    async def test_virtualized_same_count_window_keeps_unmounted_newer_messages(self):
+        from shadow.instagram import InstagramBrowser
+        from unittest.mock import patch
+
+        await self.open_fixture('thread_long.html')
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            const markup = texts => '<div style="height:1200px"></div>'
+                + texts.map(text => '<div role="article"><span dir="auto">' + text + '</span></div>').join('')
+                + '<div style="height:1200px"></div>';
+            pane.innerHTML = markup(['a', 'b', 'c']); pane.scrollTop = pane.scrollHeight;
+            let loaded = false;
+            setTimeout(() => pane.addEventListener('scroll', () => {
+                if (loaded) return; loaded = true; pane.setAttribute('aria-busy', 'true');
+                setTimeout(() => {
+                    pane.innerHTML = markup(['older', 'a', 'b']); pane.removeAttribute('aria-busy');
+                }, 250);
+            }), 50);
+        }""")
+        await self.page.wait_for_timeout(80)
+        adapter = InstagramBrowser(); adapter.page = self.page
+        with patch.object(adapter, '_assert_on_site'):
+            result = await adapter._load_history(4)
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual([e.text for e in result.events], ['older', 'a', 'b', 'c'])
+        self.assertFalse(result.complete)
+
+    async def test_static_history_timeout_is_incomplete_and_does_not_duplicate(self):
+        from shadow.instagram import InstagramBrowser
+        from shadow.settings import Settings
+        from unittest.mock import patch
+
+        await self.open_fixture('thread_1to1.html')
+        adapter = InstagramBrowser(settings=Settings(history_step_timeout_ms=300))
+        adapter.page = self.page
+        before = (await self.read()).events
+        with patch.object(adapter, '_assert_on_site'):
+            result = await adapter._load_history(100)
+        self.assertFalse(result.complete)
+        self.assertEqual(result.status, 'dom_unknown')
+        self.assertEqual(result.detail, 'history_load_unsettled')
+        self.assertEqual(result.events, before)
+
+    async def test_history_thread_switch_cannot_return_old_thread_success(self):
+        from shadow.instagram import InstagramBrowser
+        from unittest.mock import patch
+
+        await self.open_fixture('thread_long.html')
+        await self.page.evaluate("""() => {
+            document.querySelector('.pane').addEventListener('scroll', () => {
+                window.__fixturePath = '/direct/t/99999/';
+            }, {once:true});
+        }""")
+        adapter = InstagramBrowser(); adapter.page = self.page
+        with patch.object(adapter, '_assert_on_site'):
+            result = await adapter._load_history(100)
+        self.assertEqual(result.status, 'wrong_thread')
+        self.assertEqual(result.events, ())
+
+    async def test_production_visual_top_never_proves_complete_history(self):
+        self.page = await self._browser.new_page()
+        await self.page.route('https://www.instagram.com/**',
+                              lambda route: route.fulfill(path=str(FIXTURES / 'thread_1to1.html')))
+        await self.page.goto('https://www.instagram.com/direct/t/12345/')
+        result = await self.read()
+        self.assertEqual(result.status, 'ok')
+        self.assertFalse(result.complete)
+
+    async def test_zero_geometry_history_cannot_satisfy_requested_count(self):
+        from shadow.instagram import InstagramBrowser
+
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("document.querySelector('[role=article]').style.display = 'none'")
+        adapter = InstagramBrowser(); adapter.page = self.page
+        result = await adapter._load_history(1)
+        self.assertEqual(result.status, 'dom_unknown')
+        self.assertEqual(result.detail, 'history_unlaid_messages')
+
+    async def test_repeated_history_window_holds_ambiguous_overlap(self):
+        from shadow.instagram import InstagramBrowser
+        from unittest.mock import patch
+
+        await self.open_fixture('thread_long.html')
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            const message = '<div role="article"><span dir="auto">ok</span></div>';
+            pane.innerHTML = '<div style="height:1200px"></div>' + message.repeat(2);
+            pane.scrollTop = pane.scrollHeight;
+            setTimeout(() => pane.addEventListener('scroll', () => {
+                pane.insertAdjacentHTML('afterbegin', message);
+            }, {once:true}), 50);
+        }""")
+        await self.page.wait_for_timeout(80)
+        adapter = InstagramBrowser(); adapter.page = self.page
+        with patch.object(adapter, '_assert_on_site'):
+            result = await adapter._load_history(3)
+        self.assertEqual(result.status, 'dom_unknown')
+        self.assertEqual(result.detail, 'history_ambiguous')
+        self.assertEqual(result.events, ())
 
 
 class B05GuardTest(BrowserCase):

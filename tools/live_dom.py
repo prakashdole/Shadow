@@ -3,7 +3,8 @@
 
 Run with --profile PATH --output-dir NEW_PRIVATE_PATH. Commands are JSON lines:
 {"action":"capture"}, {"action":"open","index":0},
-{"action":"scroll","direction":"up"}, {"action":"close"}.
+{"action":"scroll","direction":"up"}, {"action":"history","want":100},
+{"action":"close"}.
 Opening threads can clear unread badges; no composer input is available here.
 """
 
@@ -78,20 +79,27 @@ async def audit(profile, output_dir):
     async def capture():
         nonlocal serial
         browser._assert_on_site()
-        raw = await browser.page.evaluate(JS_RAW)
-        thread = thread_id_from_url(browser.page.url)
-        result = interpret_read(raw, thread) if thread else interpret_inbox(raw)
         serial += 1
         stem = output / f"capture-{serial:03d}"
         shot = str(stem) + ".png"
         await browser.page.screenshot(path=shot)
         os.chmod(shot, 0o600)
+        # Screenshot rendering can settle content-visibility virtualization.
+        # Read afterward so the raw capture describes the inspected frame.
+        raw = await browser.page.evaluate(JS_RAW)
+        thread = thread_id_from_url(browser.page.url)
+        result = interpret_read(raw, thread) if thread else interpret_inbox(raw)
         payload = {"raw": raw, "parsed": asdict(result), "screenshot": shot,
                    "structure": await browser.page.evaluate(JS_STRUCTURE)}
         descriptor = os.open(str(stem) + ".json", os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             json.dump(payload, stream, ensure_ascii=False, indent=2)
-        print(json.dumps({"capture": serial, "status": result.status, "parsed": asdict(result),
+        print(json.dumps({"capture": serial, "status": result.status,
+                          "events": len(getattr(result, 'events', ())),
+                          "rows": len(getattr(result, 'rows', ())),
+                          "complete": getattr(result, 'complete', False),
+                          "pane": raw.get('pane_present'), "loading": raw.get('loading'),
+                          "seen": raw.get('seen'),
                           "screenshot": shot, "evidence": str(stem) + ".json"}, ensure_ascii=False), flush=True)
 
     try:
@@ -125,6 +133,16 @@ async def audit(profile, output_dir):
                     await browser.page.mouse.move(centre["x"], centre["y"])
                     await browser.page.mouse.wheel(0, -550 if direction == "up" else 550)
                     await browser.page.wait_for_timeout(1200)
+                elif action == "history":
+                    want = command.get('want')
+                    thread = thread_id_from_url(browser.page.url)
+                    if type(want) is not int or not 1 <= want <= 500 or not thread:
+                        raise ValueError('History needs an open thread and a bounded message count')
+                    start = asyncio.get_running_loop().time()
+                    result = await browser.read_thread(thread, want=want)
+                    print(json.dumps({'history_status': result.status, 'detail': result.detail,
+                                      'events': len(result.events), 'complete': result.complete,
+                                      'elapsed_ms': round((asyncio.get_running_loop().time() - start) * 1000)}), flush=True)
                 elif action != "capture":
                     raise ValueError("Unsupported diagnostic action")
                 await capture()

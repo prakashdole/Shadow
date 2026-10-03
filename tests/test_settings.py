@@ -109,6 +109,15 @@ class TestSettings(unittest.TestCase):
             S.load_settings(self.dir)
         self.assertIn("momentum_window", str(ctx.exception))
 
+    def test_dom_wait_and_scroll_budgets_require_positive_integers(self):
+        from dataclasses import replace
+
+        for name in ('dom_read_timeout_ms', 'dom_settle_ms', 'dom_sample_ms',
+                     'history_max_steps', 'history_step_timeout_ms'):
+            for value in (0, -1, True, 1.5):
+                with self.subTest(name=name, value=value), self.assertRaises(S.SettingsError):
+                    S.validate(replace(S.Settings(), **{name:value}))
+
     def test_out_of_range_and_malformed_values_are_rejected(self) -> None:
         cases = {
             "reply_delay_momentum = [90, 15]\n": "reply_delay_momentum",

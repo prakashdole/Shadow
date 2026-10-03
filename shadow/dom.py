@@ -90,20 +90,48 @@ JS_ROW_LINES = r"""const rowLines = el => {
     return (el.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
 };"""
 
+# Prefer a message ancestor: scanning every div is only a cold-layout fallback.
+# The same discovery is used by the reader and history loader.
+JS_FIND_PANE = r"""const findMessagePane = () => {
+    const list = document.querySelector('[aria-label="Thread list"]');
+    const valid = el => {
+        if (el.clientHeight < 200 || (list && list.contains(el))) return false;
+        if (!/^(auto|scroll)$/.test(getComputedStyle(el).overflowY)) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.left >= document.documentElement.clientWidth * 0.15;
+    };
+    const first = document.querySelector('[role="article"]');
+    for (let el = first?.parentElement; el; el = el.parentElement) {
+        if (valid(el)) return el;
+    }
+    for (const el of document.querySelectorAll('[role="log"], [aria-label="Messages"]')) {
+        if (valid(el)) return el;
+    }
+    let pane = null, width = 0;
+    for (const el of document.querySelectorAll('div')) {
+        if (!valid(el)) continue;
+        const w = el.getBoundingClientRect().width;
+        if (w > width) { pane = el; width = w; }
+    }
+    return pane;
+};"""
+
 # One evaluate returns everything both readers need. `window.__fixturePath` is
 # only ever set by a test on a file:// page; on instagram.com it is undefined
 # and location.pathname is used.
 JS_RAW = r"""() => {
-""" + JS_ROW_LINES + r"""
+""" + JS_ROW_LINES + JS_FIND_PANE + r"""
     const OUT = {
         path: (window.__fixturePath !== undefined && window.__fixturePath !== null)
             ? String(window.__fixturePath)
             : String(location.pathname || ''),
         list_present: false,
+        inbox_empty_verified: false,
         rows: [],
         pane_present: false,
         pane: null,
         at_start: false,
+        loading: false,
         header: {profile_links: 0, avatars: 0},
         articles: [],
         outside: [],
@@ -142,6 +170,9 @@ JS_RAW = r"""() => {
     // --- thread list -------------------------------------------------
     const list = document.querySelector('[aria-label="Thread list"]');
     OUT.list_present = !!list;
+    // A rendered but still-populating list is not an empty inbox. No current
+    // live empty-state marker has been verified; static fictional files only.
+    OUT.inbox_empty_verified = !!list && location.protocol === 'file:';
     if (list) {
         const band = [...list.querySelectorAll('div[role="button"]')].filter(el => {
             const h = el.getBoundingClientRect().height;
@@ -165,25 +196,28 @@ JS_RAW = r"""() => {
         OUT.rows.sort((a, b) => a.top - b.top);
     }
 
-    // --- message pane: widest scrollable div right of the thread list ----
+    // --- message pane: message ancestor, then cold-layout fallback -------
     const vw = document.documentElement.clientWidth;
-    let pane = null;
-    for (const el of document.querySelectorAll('div')) {
-        if (el.clientHeight < 200) continue;
-        if (!/^(auto|scroll)$/.test(getComputedStyle(el).overflowY)) continue;
-        const r = el.getBoundingClientRect();
-        if (r.left < vw * 0.15) continue;
-        if (list && list.contains(el)) continue;
-        if (!pane || r.width > pane.getBoundingClientRect().width) pane = el;
-    }
+    const pane = findMessagePane();
     OUT.pane_present = !!pane;
     if (pane) {
         const pr = pane.getBoundingClientRect();
         OUT.pane = {left: pr.left, right: pr.right, width: pr.width};
         // Instagram's column-reverse starts at zero at the NEWEST message.
         // Its virtualized upper edge is not evidence of full history either.
-        OUT.at_start = getComputedStyle(pane).flexDirection !== 'column-reverse'
-            && pane.scrollTop <= 2;
+        const reversed = getComputedStyle(pane).flexDirection === 'column-reverse';
+        const extent = Math.max(0, pane.scrollHeight - pane.clientHeight);
+        OUT.at_visual_start = reversed ? pane.scrollTop <= -extent + 2 : pane.scrollTop <= 2;
+        // A static fictional file has no server-side pages. Real Instagram's
+        // visual edge never proves server history completeness.
+        OUT.at_start = location.protocol === 'file:' && OUT.at_visual_start;
+        OUT.loading = pane.getAttribute('aria-busy') === 'true'
+            || [...pane.querySelectorAll('[role="progressbar"]')].some(el => {
+                if (el.closest('[role="article"]')) return false;
+                const r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0 && r.top >= pr.top - 2
+                    && r.bottom <= pr.top + 80;
+            });
 
         // Header evidence: the strip above the message list, right of the list.
         for (const a of document.querySelectorAll('a[href]')) {
@@ -452,6 +486,8 @@ def inbox_status(raw: dict) -> tuple[ReadStatus, str]:
     if not raw.get("list_present"):
         return "dom_unknown", "thread_list_missing"
     if not raw.get("rows"):
+        if raw.get('inbox_empty_verified') is False:
+            return 'dom_unknown', 'inbox_rows_not_ready'
         return "empty_verified", "thread_list_rendered_no_rows"
     if raw.get("seen"):
         return "receipts_visible", "seen_leaf_in_thread"
@@ -510,6 +546,9 @@ def interpret_read(
     if raw.get("seen"):
         return ReadResult(status="receipts_visible", thread_id=thread_id,
                           navigations_used=navigations_used, detail="seen_leaf_in_thread")
+    if raw.get("loading"):
+        return ReadResult(status="dom_unknown", thread_id=thread_id,
+                          navigations_used=navigations_used, detail="thread_loading")
 
     pane = raw.get("pane") or {}
     pane_left = pane.get("left", 0.0)
@@ -528,6 +567,9 @@ def interpret_read(
         is_group = None
 
     articles = raw.get("articles") or []
+    if not articles:
+        return ReadResult(status="dom_unknown", thread_id=thread_id,
+                          navigations_used=navigations_used, detail="no_messages_rendered")
     outside = {o["order"]: o for o in (raw.get("outside") or [])}
     orders = raw.get("article_orders") or []
 
@@ -619,7 +661,7 @@ def interpret_read(
         status="ok",
         thread_id=thread_id,
         events=tuple(events),
-        # True only if the window actually reached the start of the thread.
+        # Real Instagram DOM has no verified server-history end signal.
         complete=bool(raw.get("at_start")),
         is_group=is_group,
         participant_links=links,

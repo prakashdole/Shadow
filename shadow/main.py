@@ -74,6 +74,7 @@ def observe_once_command() -> None:
             browser = InstagramBrowser(
                 cdp_url=os.environ.get("SHADOW_CDP_URL", "http://127.0.0.1:9222"),
                 expected_account=expected_handle,
+                settings=settings,
             )
             report = asyncio.run(observe_once(storage, browser, settings, account_id))
     except (SettingsError, ValueError) as exc:
@@ -155,6 +156,7 @@ def observe_command(once: bool, with_model: bool, with_telegram: bool, profile: 
                 cdp_url=os.environ.get("SHADOW_CDP_URL", "http://127.0.0.1:9222"),
                 expected_account=expected,
                 profile_dir=profile, headless=headless,
+                settings=settings,
             )
             report = asyncio.run(observe_loop(storage, browser, settings, account_id,
                                               decisions, once=once,

@@ -56,6 +56,10 @@ def _int(name, value):
     _ints(name, value)
 
 
+def _positive_int(name, value):
+    _ints(name, value, lo=1)
+
+
 def _pair(name, value):
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         _fail(name, value, "expected a (min, max) pair of seconds")
@@ -189,6 +193,11 @@ CHECKS = {
     "send_cap_account": _rates,
     "send_cap_thread": _rates,
     "pane_check_interval": _int,
+    "dom_read_timeout_ms": _positive_int,
+    "dom_settle_ms": _positive_int,
+    "dom_sample_ms": _positive_int,
+    "history_max_steps": _positive_int,
+    "history_step_timeout_ms": _positive_int,
     "inbox_check_interval": _int,
     "quiet_poll_interval": _int,
     "idle_backoff_max": _int,
@@ -237,6 +246,11 @@ class Settings:
 
     # Pacing of reads and backoff.
     pane_check_interval: int = 15
+    dom_read_timeout_ms: int = 15_000
+    dom_settle_ms: int = 150
+    dom_sample_ms: int = 75
+    history_max_steps: int = 24
+    history_step_timeout_ms: int = 2_000
     inbox_check_interval: int = 60
     quiet_poll_interval: int = 300
     idle_backoff_max: int = 300

@@ -29,6 +29,9 @@ This table is the only place numeric defaults are defined. Other plan documents,
 | `send_cap_account` | 20/hour, 100/day | Autonomous + approved turns. Owner commands are counted and identified separately but share the transport cap. |
 | `send_cap_thread` | 6/hour | Per conversation. |
 | `pane_check_interval` | 15 s | In-page re-read of the already open tab. No navigation. |
+| `dom_read_timeout_ms` | 15,000 ms | Total deadline for cold DOM readiness or one requested-history collection. Timeout never proves an empty thread. |
+| `dom_settle_ms` / `dom_sample_ms` | 150 / 75 ms | Rendered-content quiet period and in-page geometry sampling. The settled steady-state read adds no wait. |
+| `history_max_steps` / `history_step_timeout_ms` | 24 / 2,000 ms | Sequential overlapping scroll step and per-step wait ceilings, also bounded by `dom_read_timeout_ms`. No progress, ambiguity or a visual edge never proves complete server history. |
 | `inbox_check_interval` | 60 s | In-page read of the rendered thread list; navigates only if the list is not rendered. |
 | `quiet_poll_interval` | 5 min | Inbox check outside `active_hours` (urgent detection only). |
 | `idle_backoff_max` | 5 min | Error/idle backoff ceiling within active hours. |

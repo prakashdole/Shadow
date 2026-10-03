@@ -19,9 +19,11 @@ The rules this class must never break:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import os
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -32,9 +34,10 @@ from shadow.contracts import (
     CheckPoint, InboxResult, InboxRow, ReadResult, SendCheck, SendResult,
 )
 from shadow.dom import (
-    JS_CLEAR_COMPOSER, JS_COMPOSER, JS_RAW, JS_ROW_LINES, interpret_inbox, interpret_read,
+    JS_CLEAR_COMPOSER, JS_COMPOSER, JS_FIND_PANE, JS_RAW, JS_ROW_LINES, interpret_inbox, interpret_read,
     normalize, same_thread, thread_id_from_url,
 )
+from shadow.settings import Settings
 
 log = logging.getLogger("shadow.instagram")
 
@@ -46,8 +49,6 @@ _LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 SEND_CONFIRM_TIMEOUT = 8.0
 # PROPOSED SETTING: send_confirm_poll_ms - in-page read interval while waiting.
 SEND_CONFIRM_POLL_MS = 250
-# PROPOSED SETTING: history_wheels - wheel dispatches per deeper-history load.
-HISTORY_WHEELS = 4
 
 IG_INBOX = "https://www.instagram.com/direct/inbox/"
 IG_THREAD = "https://www.instagram.com/direct/t/{thread_id}/"
@@ -93,18 +94,67 @@ _JS_THREAD_OPENED = r"""(previous) => {
 }"""
 
 _JS_PANE_CENTRE = r"""() => {
-    const vw = document.documentElement.clientWidth;
-    let pane = null;
-    for (const el of document.querySelectorAll('div')) {
-        if (el.clientHeight < 200) continue;
-        if (!/^(auto|scroll)$/.test(getComputedStyle(el).overflowY)) continue;
-        const r = el.getBoundingClientRect();
-        if (r.left < vw * 0.15) continue;
-        if (!pane || r.width > pane.getBoundingClientRect().width) pane = el;
-    }
+""" + JS_FIND_PANE + r"""
+    const pane = findMessagePane();
     if (!pane) return null;
     const r = pane.getBoundingClientRect();
     return {x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2)};
+}"""
+
+# One browser round-trip; DOM mutations and periodic geometry checks share a
+# deadline. Timer sampling also works in headless/background tabs without rAF.
+_JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, scroll]) => {
+""" + JS_FIND_PANE + r"""
+    const read = eval('(' + source + ')');
+    const pane = scroll ? findMessagePane() : null;
+    if (scroll && !pane) return {raw: read(), reason: 'pane_missing'};
+    const signature = raw => JSON.stringify([raw.path, raw.rows,
+        thread ? raw.articles.map(a => [a.text, a.media_label, a.reply_to_text, a.edited,
+            a.left, a.width, a.laid]) : null, thread ? raw.outside : null, raw.loading]);
+    const before = read();
+    const beforeSignature = signature(before);
+    const beforeScroll = pane?.scrollTop;
+    let changed = !scroll;
+    return await new Promise(resolve => {
+        let previous = null, stableSince = performance.now(), timer = null, done = false;
+        const finish = (raw, reason) => {
+            if (done) return;
+            done = true; observer.disconnect(); clearTimeout(timer); clearTimeout(deadline);
+            resolve({raw, reason, moved: !!pane && pane.scrollTop !== beforeScroll});
+        };
+        const check = () => {
+            if (done) return;
+            clearTimeout(timer);
+            const raw = read(), now = performance.now(), sig = signature(raw);
+            if (raw.path !== expectedPath) { finish(raw, 'path_changed'); return; }
+            if (/^\/(?:accounts\/login|challenge|checkpoint|suspended)/.test(raw.path)
+                    || raw.seen) { finish(raw, 'status'); return; }
+            if (sig !== beforeSignature) changed = true;
+            const moved = !!pane && pane.scrollTop !== beforeScroll;
+            const ready = raw.list_present && (thread ? (raw.pane_present
+                && !raw.loading && raw.articles.length > 0
+                && raw.articles.every(a => a.laid && (a.text || a.media_label)))
+                : (raw.rows.length > 0 || raw.inbox_empty_verified));
+            if (!ready || sig !== previous) stableSince = now;
+            previous = ready ? sig : null;
+            if ((changed || (moved && !raw.at_visual_start)) && ready && now - stableSince >= quiet) {
+                finish(raw, 'settled'); return;
+            }
+            timer = setTimeout(check, sample);
+        };
+        const observer = new MutationObserver(check);
+        const watchRoot = thread ? (pane || findMessagePane() || document.body)
+            : (document.querySelector('[aria-label="Thread list"]') || document.body);
+        observer.observe(watchRoot, {subtree: true, childList: true,
+            characterData: true, attributes: true,
+            attributeFilter: ['aria-busy', 'aria-pressed', 'style', 'class']});
+        const deadline = setTimeout(() => finish(read(), 'timeout'), budget);
+        if (scroll) {
+            // Keep viewport overlap; dispatch only after observation is armed.
+            pane.scrollBy({top: -Math.max(1, pane.clientHeight * 0.8), behavior: 'instant'});
+        }
+        check();
+    });
 }"""
 
 # The nav profile link, if the header rendered one. Returned to Python only to
@@ -233,7 +283,8 @@ class InstagramBrowser:
 
     def __init__(self, cdp_url: str = DEFAULT_CDP_URL,
                  expected_account: str | None = None, *,
-                 profile_dir: str | Path | None = None, headless: bool = False) -> None:
+                 profile_dir: str | Path | None = None, headless: bool = False,
+                 settings: Settings | None = None) -> None:
         refuse_cdp_url(cdp_url)
         if headless and profile_dir is None:
             raise ValueError("Headless mode requires a dedicated app-owned profile")
@@ -247,6 +298,7 @@ class InstagramBrowser:
             if any(part.casefold() in forbidden for part in self.profile_dir.parts):
                 raise ValueError("Use a dedicated Shadow profile, not a personal browser profile")
         self.headless = headless
+        self.settings = settings or Settings()
         self._owned_context = None
         self.cdp_url = cdp_url
         # A comparison value only. Never logged, never returned in a result.
@@ -395,27 +447,15 @@ class InstagramBrowser:
     async def _wait_readable(self, *, thread: bool = False) -> bool:
         """Wait for stable rendered structure, not just an SPA URL change."""
         from shadow.dom import page_status
-
-        deadline = asyncio.get_running_loop().time() + 15
-        previous = None
-        stable = 0
-        while asyncio.get_running_loop().time() < deadline:
-            self._assert_on_site()
-            raw = await self.page.evaluate(JS_RAW)
-            if page_status(raw.get("path", "")):
-                return True
-            ready = bool(raw.get("list_present"))
-            if thread:
-                ready = (ready and raw.get("pane_present") and
-                         all(a.get("laid") for a in raw.get("articles", [])))
-            signature = (raw.get("path"), repr(raw.get("rows")),
-                         repr(raw.get("articles")) if thread else "")
-            stable = stable + 1 if ready and signature == previous else 0
-            if stable >= 4:
-                return True
-            previous = signature if ready else None
-            await asyncio.sleep(0.25)
-        return False
+        self._assert_on_site()
+        raw = await self.page.evaluate(JS_RAW)
+        settled = await self.page.evaluate(_JS_WAIT_RAW, [
+            JS_RAW, thread, raw.get('path'), self.settings.dom_read_timeout_ms,
+            self.settings.dom_settle_ms, self.settings.dom_sample_ms, False,
+        ])
+        self._assert_on_site()
+        return (settled['reason'] == 'settled' or bool(settled['raw'].get('seen'))
+                or bool(page_status(settled['raw'].get('path', ''))))
 
     async def _goto(self, url: str) -> int:
         check_url(url)                      # refuse off-site before requesting
@@ -441,6 +481,9 @@ class InstagramBrowser:
             return failed
         # Steady state: the thread list is already rendered, so read in page.
         if "/direct/" in (self.page.url or "") and raw.get("list_present"):
+            if not raw.get('rows') and not raw.get('inbox_empty_verified'):
+                await self._wait_readable()
+                raw = await self.page.evaluate(JS_RAW)
             return interpret_inbox(raw, extra_detail=self._detail())
         navigations = await self._goto(IG_INBOX)
         await self._wait_readable()
@@ -525,16 +568,17 @@ class InstagramBrowser:
             return ReadResult(status="dom_unknown", thread_id=thread_id,
                               navigations_used=navigations, detail="no_thread_url")
 
-        if want > 0:
-            await self._load_history(want)
-
         raw = await self.page.evaluate(JS_RAW)
         if (navigations or not raw.get("pane_present")
-                or any(not article.get("laid") for article in raw.get("articles", []))):
+                or raw.get('loading') or not raw.get('articles')
+                or any(not article.get("laid") or not (article.get('text') or article.get('media_label'))
+                       for article in raw.get("articles", []))):
             if not await self._wait_readable(thread=True):
                 return ReadResult(status="dom_unknown", thread_id=thread_id,
                                   navigations_used=navigations, detail="thread_did_not_settle")
             raw = await self.page.evaluate(JS_RAW)
+        result = (await self._load_history(want) if want > 0
+                  else interpret_read(raw, thread_id))
         failed = await self._check_account()
         if failed:
             return ReadResult(status=failed.status, navigations_used=navigations,
@@ -543,29 +587,72 @@ class InstagramBrowser:
             return ReadResult(status="wrong_thread", thread_id=None,
                               navigations_used=navigations,
                               detail="thread_changed_during_read")
-        return interpret_read(raw, thread_id, navigations,
-                             extra_detail=self._detail())
+        return replace(result, navigations_used=navigations,
+                       detail=result.detail or self._detail())
 
-    async def _load_history(self, want: int) -> None:
-        """Wheel the pane up. Loading deeper history must never navigate."""
-        centre = await self.page.evaluate(_JS_PANE_CENTRE)
-        if not centre:
-            return
-        cdp = await self.page.context.new_cdp_session(self.page)
-        try:
-            await asyncio.gather(*(
-                cdp.send("Input.dispatchMouseEvent", {
-                    "type": "mouseWheel", "x": centre["x"], "y": centre["y"],
-                    "deltaX": 0, "deltaY": -2500, "pointerType": "mouse",
-                })
-                for _ in range(HISTORY_WHEELS)
-            ))
-        finally:
-            await cdp.detach()
-        # Not asserted: a static fixture cannot load more, and claiming a count
-        # here would be a fabricated pass. `complete` stays False and the
-        # coordinator owns what to do about an incomplete window.
-        log.info("wheelled the pane up for want=%d", want)
+    async def _load_history(self, want: int) -> ReadResult:
+        """Collect bounded overlapping windows, oldest first, without navigation.
+
+        No content hash deduplication, guessed overlap or silent unmatched page.
+        Reaching a visual edge or timing out is never server-history proof.
+        """
+        from shadow import alignment
+
+        def history_keys(items):
+            # Same text with a different quoted target/media kind is not a
+            # verified overlap. Keep the coordinator's public key unchanged.
+            return [alignment.key_of(e.sender, e.kind, json.dumps(
+                [normalize(e.text), e.media_label, normalize(e.reply_to_text or '')],
+                ensure_ascii=False)) for e in items]
+
+        raw = await self.page.evaluate(JS_RAW)
+        path = raw.get('path')
+        thread_id = thread_id_from_url(path)
+        result = interpret_read(raw, thread_id)
+        if any(not e.laid_out for e in result.events):
+            return replace(result, status='dom_unknown', complete=False, detail='history_unlaid_messages')
+        events = list(result.events)
+        deadline = asyncio.get_running_loop().time() + self.settings.dom_read_timeout_ms / 1000
+        for _ in range(self.settings.history_max_steps):
+            if result.status != 'ok':
+                return result
+            if sum(e.kind in ('text', 'media', 'unknown') for e in events) >= want:
+                return replace(result, events=tuple(events), detail='history_count_reached')
+            remaining = int((deadline - asyncio.get_running_loop().time()) * 1000)
+            if remaining <= 0:
+                return replace(result, status='dom_unknown', events=tuple(events), complete=False,
+                               detail='history_budget_exhausted')
+            self._assert_on_site()
+            settled = await self.page.evaluate(_JS_WAIT_RAW, [
+                JS_RAW, True, path, min(remaining, self.settings.history_step_timeout_ms),
+                self.settings.dom_settle_ms, self.settings.dom_sample_ms, True,
+            ])
+            self._assert_on_site()
+            if settled['reason'] == 'path_changed':
+                return ReadResult('wrong_thread', detail='thread_changed_during_history')
+            older = interpret_read(settled['raw'], thread_id)
+            if older.status != 'ok':
+                return older
+            if settled['reason'] != 'settled':
+                return replace(result, status='dom_unknown', events=tuple(events), complete=False,
+                               detail='history_load_unsettled')
+            old_keys, new_keys = history_keys(older.events), history_keys(events)
+            if old_keys == new_keys:
+                if settled.get('moved') and not settled['raw'].get('at_visual_start'):
+                    continue
+                return replace(result, status='dom_unknown', events=tuple(events), complete=False,
+                               detail='history_no_progress')
+            overlap = alignment.align(old_keys, new_keys)
+            if overlap.status != 'ok' or not overlap.overlap:
+                return ReadResult('dom_unknown', thread_id=thread_id,
+                                  detail=f'history_{overlap.status}')
+            added = list(older.events[:-overlap.overlap])
+            if not added:
+                return replace(result, status='dom_unknown', events=tuple(events), complete=False,
+                               detail='history_no_progress')
+            events = [replace(e, position=i) for i, e in enumerate(added + events)]
+            result = replace(older, events=tuple(events), complete=False)
+        return replace(result, status='dom_unknown', complete=False, detail='history_step_budget_exhausted')
 
     async def send_one(self, thread_id: str, text: str, check: SendCheck) -> SendResult:
         assert self.page
