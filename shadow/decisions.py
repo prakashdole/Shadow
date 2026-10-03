@@ -6,6 +6,7 @@ No prose extraction or partial JSON recovery: an invalid response is a hold.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -148,6 +149,26 @@ _ROLE_RULES = {
     ),
 }
 
+# High-confidence cues only. These may raise a model's severity, never clear a
+# hold. Contextual, ambiguous language still belongs to the risk role.
+_DISTRESS = re.compile(r"\b(?:suicid(?:e|al)|kill myself|end my life|self.harm|"
+                       r"marna chahta|khudkhushi|jaan dena)\b", re.I)
+_MONEY = re.compile(r"(?:₹\s*\d|\b(?:send|transfer|bhej|pay)\s+(?:me\s+)?"
+                    r"(?:money|cash|paise|rupees|upi)\b)", re.I)
+_AUTOMATION = re.compile(r"\b(?:are you (?:a |an )?(?:bot|ai)|is this (?:a )?bot|"
+                         r"automated repl(?:y|ies)|tu bot hai)\b", re.I)
+
+
+def _minimum_risk(data: DecisionInput) -> tuple[str, str] | None:
+    for event in data.current_batch:
+        if event.sender != "contact" or event.kind != "text":
+            continue
+        if _DISTRESS.search(event.text):
+            return "distress", "urgent"
+        if _MONEY.search(event.text):
+            return "money", "hold"
+    return None
+
 
 class StructuredDecisions:
     """Three separate bounded roles; the transport never receives authority to act."""
@@ -156,7 +177,28 @@ class StructuredDecisions:
         self.transport, self.storage, self.settings = transport, storage, settings
 
     async def assess(self, data: DecisionInput) -> RoleOutcome:
-        return await self._call("risk", data)
+        result = await self._call("risk", data)
+        if result.failure or not isinstance(result.value, RiskAssessment):
+            return result
+        assessment = result.value
+        floor = _minimum_risk(data)
+        signals = set(assessment.signals)
+        if any(_AUTOMATION.search(event.text) for event in data.current_batch
+               if event.sender == "contact" and event.kind == "text"):
+            signals.add("automation_question")
+        if floor and assessment.action_hint != "urgent":
+            risk, action = floor
+            assessment = RiskAssessment(risk, f"cue_{risk}", action,
+                                        frozenset(signals), assessment.evidence_event_ids)
+        elif signals != set(assessment.signals):
+            assessment = RiskAssessment(assessment.risk, assessment.reason_code,
+                                        "hold" if assessment.action_hint == "proceed" else assessment.action_hint,
+                                        frozenset(signals), assessment.evidence_event_ids)
+        if assessment.risk != "none" and assessment.action_hint == "proceed":
+            assessment = RiskAssessment(assessment.risk, assessment.reason_code, "hold",
+                                        assessment.signals, assessment.evidence_event_ids)
+        return RoleOutcome(role="risk", value=assessment, usage=result.usage,
+                           versions=result.versions)
 
     async def draft(self, data: DecisionInput, assessment: RiskAssessment) -> RoleOutcome:
         if assessment.action_hint != "proceed" or assessment.signals:
@@ -183,9 +225,12 @@ class StructuredDecisions:
         if assessment:
             payload["assessment"] = vars(assessment) | {"signals": sorted(assessment.signals)}
         try:
+            input_text = json.dumps(payload, ensure_ascii=False)
+            if len(input_text) > 32000:
+                return RoleOutcome(role=role, failure="invalid_output")
             response = await self.transport.generate(
                 role, _INSTRUCTION + _ROLE_RULES[role],
-                json.dumps(payload, ensure_ascii=False),
+                input_text,
             )
         except TimeoutError:
             return RoleOutcome(role=role, failure="timeout")

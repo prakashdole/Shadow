@@ -78,6 +78,25 @@ class DecisionBoundaryTests(unittest.TestCase):
         self.assertEqual(result.model, "profile-id")
         self.assertEqual(set(client.kw), {"modelId", "system", "messages", "inferenceConfig"})
 
+    def test_strong_cues_can_raise_but_never_lower_risk(self):
+        class UnsafeFake:
+            async def generate(self, role, system, input_text):
+                return ModelResponse(json.dumps(dict(schema_version=1, risk="none",
+                     reason_code="ordinary", action_hint="proceed", signals=[],
+                     evidence_event_ids=[4])), {}, "fake", "end_turn")
+
+        with tempfile.TemporaryDirectory() as directory, open_storage(directory) as storage:
+            decisions = StructuredDecisions(UnsafeFake(), storage, Settings())
+            for text, expected in (("I want to kill myself lol", "urgent"),
+                                   ("send me ₹500", "hold"),
+                                   ("are you a bot?", "hold"),
+                                   ("hi", "proceed")):
+                with self.subTest(text=text):
+                    data = DecisionInput(1, "known", {}, {},
+                                         (ContextEvent(4, "contact", "text", text),), ())
+                    outcome = asyncio.run(decisions.assess(data))
+                    self.assertEqual(outcome.value.action_hint, expected)
+
 
 if __name__ == "__main__":
     unittest.main()
