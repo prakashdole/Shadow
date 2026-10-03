@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 from click.testing import CliRunner
 
-from fake_ports import FakeBrowser, event, read, row
+from fake_ports import FakeBrowser, FakeDecisions, event, read, row
 from shadow.contracts import InboxResult
 from shadow.main import cli
-from shadow.observe import observe_once
+from shadow.observe import observe_loop, observe_once
 from shadow.settings import Settings, SettingsError
 from shadow.storage import open_storage
 
@@ -72,6 +72,22 @@ class TestObservation(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(SettingsError):
             await observe_once(self.storage, self.browser, Settings(), "test-account")
         self.assertFalse(self.browser.closed)
+
+    async def test_configured_decisions_remain_non_sending(self):
+        self.browser.inbox_result = InboxResult(status="ok", rows=(row(0),))
+        self.browser.reads["100200300"] = read("100200300", (event(0, "contact", "first"),))
+        await observe_loop(self.storage, self.browser, Settings(), "test-account",
+                           FakeDecisions(), once=True)
+        conversation = self.storage.get_conversation_by_thread("test-account", "100200300")
+        self.storage.set_contact_status(conversation["id"], "known")
+        self.browser.reads["100200300"] = read(
+            "100200300", (event(0, "contact", "first"), event(1, "contact", "second"))
+        )
+        result = await observe_loop(self.storage, self.browser, Settings(), "test-account",
+                                    FakeDecisions(), once=True)
+        self.assertEqual(result.drafted, 1)
+        self.assertEqual(self.browser.sent, [])
+        self.assertEqual(self.storage.outbox_items(), [])
 
 
 class TestObserveCLI(unittest.TestCase):

@@ -108,6 +108,47 @@ def owner_poll_once_command() -> None:
     click.echo(f"accepted_commands={count}")
 
 
+@cli.command("observe")
+@click.option("--once", is_flag=True, help="One snapshot, then stop.")
+@click.option("--with-model", is_flag=True, help="Call explicitly configured models; still never send.")
+def observe_command(once: bool, with_model: bool) -> None:
+    """Run the v2 non-sending observer against a dedicated browser profile."""
+    from shadow.instagram import InstagramBrowser
+    from shadow.observe import observe_loop
+    from shadow.settings import SettingsError, data_dir, load_settings
+    from shadow.storage import open_storage
+
+    account_id = os.environ.get("SHADOW_ACCOUNT_ID", "").strip()
+    expected = os.environ.get("SHADOW_EXPECTED_ACCOUNT", "").strip()
+    if not account_id or not expected:
+        raise click.ClickException("Set SHADOW_ACCOUNT_ID and SHADOW_EXPECTED_ACCOUNT privately.")
+    try:
+        directory = data_dir()
+        settings = load_settings(directory)
+        with open_storage(directory) as storage:
+            decisions = None
+            if with_model:
+                from shadow.decisions import StructuredDecisions
+                from shadow.model_bedrock import BedrockTransport
+
+                models = {role: os.environ.get(f"SHADOW_{role.upper()}_MODEL", "").strip()
+                          for role in ("risk", "reply", "extraction")}
+                transport = BedrockTransport(region=os.environ.get("SHADOW_AWS_REGION", ""),
+                                             models=models)
+                decisions = StructuredDecisions(transport, storage, settings)
+            browser = InstagramBrowser(
+                cdp_url=os.environ.get("SHADOW_CDP_URL", "http://127.0.0.1:9222"),
+                expected_account=expected,
+            )
+            report = asyncio.run(observe_loop(storage, browser, settings, account_id,
+                                              decisions, once=once))
+    except (SettingsError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"rows={report.rows} opened={report.opened} ingested={report.ingested} "
+               f"assessed={report.assessed} held={report.held} "
+               f"status={report.stopped_reason or 'ok'}; Instagram sends=0")
+
+
 @cli.command("import-history")
 @click.option("--source", required=True, type=click.Path(exists=True),
               help="Directory holding people/<folder>/chat_log.jsonl.")
