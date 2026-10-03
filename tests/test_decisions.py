@@ -111,6 +111,19 @@ class DecisionBoundaryTests(unittest.TestCase):
             asyncio.run(StructuredDecisions(transport, storage, Settings()).extract(data))
             self.assertEqual(list(transport.input), ["current_batch"])
 
+    def test_distress_beats_money_in_an_earlier_bubble_and_needs_no_provider(self):
+        class Unavailable:
+            async def generate(self, *args):
+                raise AssertionError("explicit danger must not call a provider")
+        with tempfile.TemporaryDirectory() as directory, open_storage(directory) as storage:
+            data = DecisionInput(1, "known", {}, {}, (
+                ContextEvent(4, "contact", "text", "send money"),
+                ContextEvent(5, "contact", "text", "I want to kill myself")), ())
+            result = asyncio.run(StructuredDecisions(Unavailable(), storage,
+                Settings(risk_call_budget=((0, 3600),))).assess(data))
+            self.assertEqual(result.value.action_hint, "urgent")
+            self.assertEqual(storage.usage_counters(), [])
+
 
 if __name__ == "__main__":
     unittest.main()

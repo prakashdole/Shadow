@@ -160,14 +160,15 @@ _AUTOMATION = re.compile(r"\b(?:are you (?:a |an )?(?:bot|ai)|is this (?:a )?bot
 
 
 def _minimum_risk(data: DecisionInput) -> tuple[str, str] | None:
+    money = False
     for event in data.current_batch:
         if event.sender != "contact" or event.kind != "text":
             continue
         if _DISTRESS.search(event.text):
             return "distress", "urgent"
         if _MONEY.search(event.text):
-            return "money", "hold"
-    return None
+            money = True
+    return ("money", "hold") if money else None
 
 
 class StructuredDecisions:
@@ -177,20 +178,23 @@ class StructuredDecisions:
         self.transport, self.storage, self.settings = transport, storage, settings
 
     async def assess(self, data: DecisionInput) -> RoleOutcome:
+        floor = _minimum_risk(data)
+        # Immediate explicit danger must not wait for a provider or its budget.
+        if floor is not None:
+            risk, action = floor
+            return RoleOutcome("risk", value=RiskAssessment(
+                risk, f"cue_{risk}", action,
+                evidence_event_ids=tuple(event.event_id for event in data.current_batch),
+            ))
         result = await self._call("risk", data)
         if result.failure or not isinstance(result.value, RiskAssessment):
             return result
         assessment = result.value
-        floor = _minimum_risk(data)
         signals = set(assessment.signals)
         if any(_AUTOMATION.search(event.text) for event in data.current_batch
                if event.sender == "contact" and event.kind == "text"):
             signals.add("automation_question")
-        if floor and assessment.action_hint != "urgent":
-            risk, action = floor
-            assessment = RiskAssessment(risk, f"cue_{risk}", action,
-                                        frozenset(signals), assessment.evidence_event_ids)
-        elif signals != set(assessment.signals):
+        if signals != set(assessment.signals):
             assessment = RiskAssessment(assessment.risk, assessment.reason_code,
                                         "hold" if assessment.action_hint == "proceed" else assessment.action_hint,
                                         frozenset(signals), assessment.evidence_event_ids)
@@ -218,9 +222,9 @@ class StructuredDecisions:
         if role != "extraction":
             payload.update({
                 "contact_status": data.contact_status,
-                "relationship": data.relationship if role == "reply" else {},
+                "relationship": data.relationship,
                 "owner_profile": data.owner_profile if role == "reply" else {},
-                "corrections": data.corrections if role == "reply" else (),
+                "corrections": data.corrections,
                 "recent": [vars(event) for event in data.recent[-30 if role == "reply" else -6:]],
             })
         if assessment:
