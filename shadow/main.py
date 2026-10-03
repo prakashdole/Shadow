@@ -10,23 +10,25 @@ from datetime import datetime, timezone
 
 import click
 
-from shadow import brain, memory
-from shadow.config import (
-    ACTIVE_END, ACTIVE_START, EFFORT, LOG_FILE, MODEL, PROVIDER,
-)
-from shadow.memory import Msg
-
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 def setup_logging(verbose: bool = False) -> None:
+    from logging.handlers import RotatingFileHandler
+    from shadow.settings import data_dir
+
+    directory = data_dir() / "logs"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    logfile = directory / "shadow.log"
+    descriptor = os.open(logfile, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600)
+    os.close(descriptor)
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s | %(levelname)-7s | %(name)-16s | %(message)s",
         datefmt="%H:%M:%S",
         handlers=[
-            logging.FileHandler(LOG_FILE, encoding="utf-8"),
+            RotatingFileHandler(logfile, maxBytes=1_000_000, backupCount=7, encoding="utf-8"),
             logging.StreamHandler(sys.stdout),
         ],
     )
@@ -45,8 +47,8 @@ def run(once: bool, dry_run: bool, verbose: bool) -> None:
     """Start the bot. Disabled since P01; see the message it prints."""
     click.echo(
         "Legacy runtime is disabled since P01: its send path can address the "
-        "wrong chat and record unsent replies. The new runtime arrives in P03. "
-        "Offline check: `shadow reply`."
+        "wrong chat and record unsent replies. Use `shadow observe` for the "
+        "non-sending v2 runtime and `shadow doctor` for readiness."
     )
     raise SystemExit(2)
 
@@ -233,6 +235,10 @@ def evaluate_command(dataset, split, repeats, with_model):
 @click.option("--message", required=True, help="What they said.")
 def reply(person: str, message: str) -> None:
     """Test the model on one message. No browser, nothing sent."""
+    from shadow import brain, memory
+    from shadow.config import EFFORT, MODEL, PROVIDER
+    from shadow.memory import Msg
+
     setup_logging()
     prof = memory.profile(person)
     folder = memory.resolve(person)
@@ -262,22 +268,96 @@ def reply(person: str, message: str) -> None:
 
 @cli.command()
 def status() -> None:
-    """Show config, state, and who is in memory."""
-    from shadow.loop import in_active_hours, load_state, stories_due
+    """Redacted v2 status. No legacy archive or model call."""
+    import json
+    from shadow.operations import local_control, readiness
+    from shadow.settings import data_dir
 
-    state = load_state()
-    if PROVIDER and MODEL:
-        click.echo(f"provider:     {PROVIDER}")
-        click.echo(f"model:        {MODEL}")
-    else:
-        click.echo("provider:     NOT CHOSEN YET  (set SHADOW_PROVIDER + SHADOW_MODEL)")
-        click.echo("model:        NOT CHOSEN YET")
-    click.echo(f"effort:       {EFFORT}")
-    click.echo(f"active hours: {ACTIVE_START:02d}:00-{ACTIVE_END:02d}:00  "
-               f"(now: {'INSIDE' if in_active_hours() else 'OUTSIDE'})")
-    click.echo(f"people:       {len(memory.people())}")
-    click.echo(f"threads seen: {len(state.get('replied', {}))}")
-    click.echo(f"stories:      {'due today' if stories_due(state) else 'done today'}")
+    try:
+        report = local_control(data_dir(), "status")
+    except OSError:
+        report = readiness()
+    click.echo(json.dumps(report, sort_keys=True))
+
+
+@cli.command("doctor")
+def doctor_command():
+    """Read-only setup checks; never opens a browser or contacts a provider."""
+    import json
+    from shadow.operations import readiness
+
+    report = readiness()
+    click.echo(json.dumps(report, sort_keys=True))
+    if report["status"] != "offline_ready":
+        raise SystemExit(2)
+
+
+def _local_command(command):
+    import json
+    from shadow.operations import local_control
+    from shadow.settings import data_dir
+
+    try:
+        report = local_control(data_dir(), command)
+    except OSError:
+        raise click.ClickException("Runtime control unavailable; start the observer or use owner-poll-once while stopped.") from None
+    click.echo(json.dumps(report))
+
+
+@cli.command("pause")
+def pause_command():
+    """Pause the running local process without Telegram/model credentials."""
+    _local_command("pause")
+
+
+@cli.command("resume")
+def resume_command():
+    """Clear only an owner pause; never an identity/challenge hold."""
+    _local_command("resume")
+
+
+@cli.command("backup")
+@click.option("--output", required=True, type=click.Path())
+def backup_command(output):
+    """Verified SQLite backup while the service is stopped; never overwrites."""
+    from shadow.operations import private_destination
+    from shadow.settings import data_dir
+    from shadow.storage import open_storage
+
+    try:
+        target = private_destination(output)
+        with open_storage(data_dir()) as storage:
+            storage.backup(target)
+    except (ValueError, OSError) as exc:
+        raise click.ClickException(str(exc)) from None
+    click.echo("Database backup verified. Back up private settings separately; exclude credentials.")
+
+
+@cli.command("restore-check")
+@click.option("--backup", required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option("--scratch", required=True, type=click.Path())
+def restore_check_command(backup, scratch):
+    """Verify a backup in a new disposable directory; never replaces production."""
+    import json
+    import sqlite3
+    from pathlib import Path
+    from contextlib import closing
+    from shadow.operations import private_destination
+
+    try:
+        target = private_destination(scratch)
+        target.mkdir(mode=0o700)
+        with closing(sqlite3.connect(Path(backup).resolve().as_uri() + "?mode=ro", uri=True)) as source:
+            with closing(sqlite3.connect(target / "restored.sqlite3")) as restored:
+                source.backup(restored)
+                integrity = restored.execute("PRAGMA quick_check").fetchone()[0]
+                version = restored.execute("PRAGMA user_version").fetchone()[0]
+        os.chmod(target / "restored.sqlite3", 0o600)
+    except (ValueError, OSError, sqlite3.Error):
+        raise click.ClickException("Restore verification failed; production left untouched.") from None
+    click.echo(json.dumps({"integrity": integrity, "schema_version": version, "production": "untouched"}))
+    if integrity != "ok":
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

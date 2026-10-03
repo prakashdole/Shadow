@@ -45,6 +45,9 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
     coordinator = Coordinator(storage, browser, decisions or NoDecisionProvider(),
                               settings, account_id=account_id)
     await coordinator.startup()
+    from shadow.operations import start_controls
+
+    controls = await start_controls(storage.directory, coordinator)
     owner_task = None
     alert_task = None
     if owner_transport is not None:
@@ -109,6 +112,9 @@ async def observe_loop(storage: Storage, browser, settings: Settings, account_id
                 return report
             await asyncio.sleep(settings.inbox_check_interval)
     finally:
+        if controls is not None:
+            controls.close()
+            await controls.wait_closed()
         tasks = [task for task in (owner_task, alert_task) if task is not None]
         for task in tasks:
             task.cancel()
