@@ -62,6 +62,7 @@ class TestFreshV2(V2Case):
         self.storage.close()
         with sqlite3.connect(self.dir / ST.DB_FILENAME) as conn:
             conn.execute("DROP TABLE role_calls")
+            conn.execute('ALTER TABLE events DROP COLUMN media_label')
             conn.execute("PRAGMA user_version = 7")
         self.storage = ST.open_storage(self.dir)
         self.assertEqual(self.storage.get_events(cid)[0]["text"], "fictional")
@@ -73,15 +74,31 @@ class TestFreshV2(V2Case):
             self.assertEqual(backup.execute("SELECT text FROM events").fetchone()[0], "fictional")
 
     def test_current_version_is_two_and_v1_sql_is_untouched(self) -> None:
-        self.assertEqual(ST.CURRENT_VERSION, 8)
+        self.assertEqual(ST.CURRENT_VERSION, 9)
         self.assertEqual(
             self.storage.conn.execute("PRAGMA user_version").fetchone()[0], ST.CURRENT_VERSION
         )
         # v1 is still described by v1 SQL: a fresh database applies both, and
         # the v1 statements are byte-identical to what P01 shipped.
-        self.assertEqual(len(ST.MIGRATIONS), 8)
+        self.assertEqual(len(ST.MIGRATIONS), 9)
         self.assertEqual(ST.MIGRATIONS[0][0], 1)
         self.assertIn("CREATE TABLE outbox", ST.MIGRATIONS[0][1])
+
+    def test_v8_media_migration_preserves_originals_and_rollback_backup(self):
+        cid = self.conversation()
+        self.storage.add_event(conversation_id=cid, sender='contact', kind='media',
+                               text='creator', source='dom', origin='unknown')
+        self.storage.close()
+        with sqlite3.connect(self.dir / ST.DB_FILENAME) as conn:
+            conn.execute('ALTER TABLE events DROP COLUMN media_label')
+            conn.execute('PRAGMA user_version = 8')
+        self.storage = ST.open_storage(self.dir)
+        self.assertEqual(self.storage.get_events(cid)[0]['text'], 'creator')
+        self.assertIsNone(self.storage.get_events(cid)[0]['media_label'])
+        with sqlite3.connect(next((self.dir / ST.BACKUP_DIR).glob('pre-migration-v8-*.sqlite3'))) as backup:
+            self.assertEqual(backup.execute('PRAGMA user_version').fetchone()[0], 8)
+            self.assertNotIn('media_label', [row[1] for row in backup.execute('PRAGMA table_info(events)')])
+            self.assertEqual(backup.execute('SELECT text FROM events').fetchone()[0], 'creator')
 
     def test_new_tables_and_columns_exist(self) -> None:
         counts = self.storage.table_counts()

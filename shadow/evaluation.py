@@ -61,6 +61,10 @@ def validate_dataset(cases):
                 raise ValueError("Invalid, future or unordered source event")
             if event.get("reply_to_text") is not None and type(event["reply_to_text"]) is not str:
                 raise ValueError("Invalid quoted context")
+            label = event.get('media_label')
+            if label is not None and (event['kind'] != 'media' or type(label) is not str
+                                      or not label or len(label) > 80):
+                raise ValueError('Invalid media context')
             known[event["id"]] = event
             previous = event["time"]
         if not case["current_ids"] or any(type(item) is not int or item not in known for item in case["current_ids"]):
@@ -86,7 +90,8 @@ def validate_dataset(cases):
 
 def decision_input(case):
     current = set(case["current_ids"])
-    events = [ContextEvent(event["id"], event["sender"], event["kind"], event["text"], event.get("reply_to_text"))
+    events = [ContextEvent(event["id"], event["sender"], event["kind"], event["text"],
+                           event.get("reply_to_text"), event.get('media_label'))
               for event in case["events"]]
     return DecisionInput(case["contact_id"], case.get("contact_status", "known"),
                          case.get("relationship", {}), case.get("owner_profile", {}),

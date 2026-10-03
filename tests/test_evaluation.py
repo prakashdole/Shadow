@@ -23,6 +23,15 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(event.text, 'hello')
         self.assertEqual(event.reply_to_text, '[quoted reel]')
 
+    def test_media_context_keeps_label_and_rejects_non_string_metadata(self):
+        case = fictional_case()
+        case['events'][0].update(kind='media', media_label='post')
+        validate_dataset([case])
+        self.assertEqual(decision_input(case).current_batch[0].media_label, 'post')
+        case['events'][0]['media_label'] = {'invented': 'content'}
+        with self.assertRaises(ValueError):
+            validate_dataset([case])
+
     def test_split_and_future_source_leakage_rejected(self):
         a, b = fictional_case(), fictional_case()
         b.update(id="fictional-2", split="test")

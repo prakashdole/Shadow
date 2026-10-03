@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from fake_ports import FakeBrowser, FakeDecisions, event, read
-from shadow.contracts import RoleOutcome
+from shadow.contracts import RoleOutcome, ObservedEvent
 from shadow.coordinator import Coordinator, TickReport
 from shadow.settings import Settings
 from shadow.storage import open_storage
@@ -79,6 +79,19 @@ class DecisionIntegrationTests(unittest.IsolatedAsyncioTestCase):
             await coordinator._assess(self.cid, TickReport())
         finally:
             await coordinator.close()
+
+    async def test_media_label_survives_ingestion_and_model_context(self):
+        class Capturing(FakeDecisions):
+            async def assess(inner, data):
+                self.assertEqual(data.current_batch[-1].media_label, 'post')
+                self.assertEqual(data.current_batch[-1].kind, 'media')
+                return await super().assess(data)
+        coordinator = Coordinator(self.storage, FakeBrowser(), Capturing(), Settings(), account_id='fictional')
+        coordinator._store_events(self.cid, [ObservedEvent(1, 'contact', 'media', 'creator caption',
+                                                          media_label='post')], [])
+        await coordinator._assess(self.cid, TickReport())
+        self.assertEqual(self.storage.get_events(self.cid)[-1]['media_label'], 'post')
+        await coordinator.close()
 
 
 if __name__ == "__main__":

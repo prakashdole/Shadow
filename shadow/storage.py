@@ -401,9 +401,13 @@ CREATE TABLE role_calls (
 );
 """
 
+SCHEMA_V9 = """
+ALTER TABLE events ADD COLUMN media_label TEXT;
+"""
+
 MIGRATIONS: tuple[tuple, ...] = (
     (1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3), (4, SCHEMA_V4), (5, SCHEMA_V5),
-    (6, SCHEMA_V6), (7, SCHEMA_V7), (8, SCHEMA_V8),
+    (6, SCHEMA_V6), (7, SCHEMA_V7), (8, SCHEMA_V8), (9, SCHEMA_V9),
 )
 CURRENT_VERSION = MIGRATIONS[-1][0]
 
@@ -921,6 +925,7 @@ class Storage:
         platform_ts: str | None = None,
         platform_msg_id: str | None = None,
         reply_to: str | None = None,
+        media_label: str | None = None,
         source: str,
         origin: str,
         seq: int | None = None,
@@ -931,6 +936,9 @@ class Storage:
             raise StorageError(
                 "an event belongs to exactly one of conversation_id or legacy_contact_id"
             )
+        if media_label is not None and (kind != 'media' or type(media_label) is not str
+                                        or not media_label or len(media_label) > 80):
+            raise StorageError('Invalid media label')
         values = (
             conversation_id,
             legacy_contact_id,
@@ -945,12 +953,13 @@ class Storage:
             origin,
             seq if seq is not None else self._next_seq(conn, conversation_id, legacy_contact_id),
             import_key,
+            media_label,
         )
         verb = "INSERT OR IGNORE" if ignore_conflict else "INSERT"
         cursor = conn.execute(
             f"{verb} INTO events (conversation_id, legacy_contact_id, sender, kind, text, "
             "observed_at, platform_ts, platform_msg_id, reply_to, source, origin, seq, "
-            "import_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "import_key, media_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             values,
         )
         if ignore_conflict and cursor.rowcount == 0:

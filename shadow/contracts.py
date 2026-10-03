@@ -157,6 +157,7 @@ class ContextEvent:
     kind: Kind
     text: str
     reply_to_text: str | None = None
+    media_label: str | None = None       # structural label, never interpreted visual content
 
 
 @dataclass(frozen=True)
