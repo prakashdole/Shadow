@@ -199,6 +199,13 @@ JS_RAW = r"""() => {
 
         // Media: a card is a role=button wrapper, or a direct media link.
         const mediaOf = art => {
+            for (const card of art.querySelectorAll('[role="presentation"]')) {
+                const parts = leavesOf(card).map(textOf).filter(Boolean);
+                if (parts.length === 2 && parts[0] === 'Message unavailable'
+                        && parts[1] === 'This content may have been deleted by its owner or hidden by their privacy settings.') {
+                    return 'message_unavailable';
+                }
+            }
             for (const icon of art.querySelectorAll('svg[aria-label], svg title')) {
                 const label = icon.getAttribute('aria-label') || icon.textContent || '';
                 if (/^(Clip|Reel)$/i.test(label.trim())) return 'reel';
@@ -216,6 +223,14 @@ JS_RAW = r"""() => {
                 const m = txt.match(/^(.{0,40}?)(Clip|Post|Reel)$/i);
                 if (m) return m[2].toLowerCase() === 'post' ? 'post' : 'reel';
             }
+            // Some live shares expose neither a type icon nor a permalink.
+            // A creator profile plus a large image card proves media, not type.
+            const creator = [...art.querySelectorAll('a[href]')]
+                .some(a => /^\/[^/]+\/?$/.test(a.getAttribute('href') || ''));
+            if (creator && [...art.querySelectorAll('[role="button"] img')].some(img => {
+                const r = img.getBoundingClientRect();
+                return r.width >= 100 && r.height >= 100;
+            })) return 'shared_media';
             return null;
         };
 

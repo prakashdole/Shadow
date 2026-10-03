@@ -310,6 +310,33 @@ class B03KindsTest(BrowserCase):
         self.assertEqual((badge.kind, badge.sender), ('reaction', 'unknown'))
         self.assertEqual(badge.evidence['target_order'], result.events[0].evidence['order'])
 
+    async def test_live_unavailable_card_is_media_but_typed_notice_is_text(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            const wrap = document.createElement('div');
+            const notice = 'Message unavailable This content may have been deleted by its owner or hidden by their privacy settings.';
+            wrap.innerHTML = '<div role="article"><div role="presentation">'
+                + '<span dir="auto">Message unavailable</span>'
+                + '<span dir="auto">This content may have been deleted by its owner or hidden by their privacy settings.</span>'
+                + '</div></div><div role="article"><span dir="auto">' + notice + '</span></div>';
+            document.querySelector('.pane').prepend(wrap);
+        }""")
+        a, b = (await self.read()).events[:2]
+        self.assertEqual((a.kind, a.media_label), ('media', 'message_unavailable'))
+        self.assertEqual(b.kind, 'text')
+
+    async def test_shared_card_without_type_icon_is_not_sender_authored_text(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            const art = document.createElement('div'); art.setAttribute('role', 'article');
+            art.innerHTML = '<a href="/fictional_creator/" dir="auto">creator</a>'
+              + '<div role="button"><img width="300" height="400" alt="">'
+              + '<span dir="auto">creator A third-party caption.</span></div>';
+            document.querySelector('.pane').prepend(art);
+        }""")
+        event = (await self.read()).events[0]
+        self.assertEqual((event.kind, event.media_label), ('media', 'shared_media'))
+
     async def test_live_reel_icon_and_creator_links_do_not_become_text_or_participants(self):
         await self.open_fixture("thread_1to1.html")
         await self.page.evaluate("""() => {
