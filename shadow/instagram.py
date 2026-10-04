@@ -107,7 +107,8 @@ _JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, 
     const read = eval('(' + source + ')');
     const pane = scroll ? findMessagePane() : null;
     if (scroll && !pane) return {raw: read(), reason: 'pane_missing'};
-    const signature = raw => JSON.stringify([raw.path, raw.rows,
+    const signature = raw => JSON.stringify([raw.path, raw.rows, raw.header, raw.parser_profile,
+        raw.composer_text, raw.pane,
         thread ? raw.articles.map(a => [a.text, a.media_label, a.reply_to_text, a.edited,
             a.left, a.width, a.laid]) : null, thread ? raw.outside : null, raw.loading]);
     const before = read();
@@ -704,6 +705,13 @@ class InstagramBrowser:
             if not added:
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
                                detail='history_no_progress')
+            # Orders/targets describe one raw window, not a merged event ID.
+            # Retain source-window relationships rather than pretending their
+            # integer orders became stable when prepending history.
+            def scoped(e, scope):
+                return replace(e, evidence={**e.evidence, 'observation_scope': scope})
+            added = [scoped(e, len(events)) for e in added]
+            events = [scoped(e, 0) if 'observation_scope' not in e.evidence else e for e in events]
             events = [replace(e, position=i) for i, e in enumerate(added + events)]
             result = replace(older, events=tuple(events), complete=False)
         return replace(result, status='dom_unknown', complete=False, detail='history_step_budget_exhausted')

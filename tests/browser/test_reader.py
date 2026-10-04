@@ -228,6 +228,28 @@ class B02IdentityTest(BrowserCase):
 
 
 class B03KindsTest(BrowserCase):
+    async def test_ordinary_edited_word_is_not_an_edit_marker(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            document.querySelector('[role=article]').innerHTML =
+                '<span dir="auto">I edited the draft</span>';
+        }""")
+        self.assertFalse((await self.read()).events[0].evidence.get('edited', False))
+
+    async def test_validated_semantic_row_profile_reads_but_does_not_mix_articles(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            document.querySelector('.pane').setAttribute('role', 'log');
+            document.querySelector('.pane').setAttribute('aria-label', 'Messages');
+            for (const art of document.querySelectorAll('[role=article]')) {
+                art.setAttribute('role', 'row'); art.setAttribute('aria-roledescription', 'message');
+            }
+        }""")
+        result = await self.read()
+        self.assertEqual(result.status, 'ok')
+        self.assertGreater(len(result.events), 0)
+        self.assertEqual(result.coverage['parser_profile'], 'semantic_rows')
+
     """B03: direction, multiline, emoji, quotes, edits, system, media."""
 
     async def test_settled_current_thread_reads_without_navigation_or_readiness_delay(self):

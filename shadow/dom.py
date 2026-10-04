@@ -116,11 +116,27 @@ JS_FIND_PANE = r"""const findMessagePane = () => {
     return pane;
 };"""
 
+JS_MESSAGE_ROOTS = r"""const messageRoots = pane => {
+    const articles = [...pane.querySelectorAll('[role="article"]')]
+        .filter(el => !el.parentElement?.closest('[role="article"]')
+            && !el.closest('[aria-hidden="true"], [hidden]'));
+    const rows = [...pane.querySelectorAll('[role="row"][aria-roledescription="message"]')];
+    // Never union competing profiles or interpret ordinary table/inbox rows.
+    if (articles.length) return {profile: rows.length ? 'mixed_unknown' : 'articles',
+                                  roots: rows.length ? [] : articles};
+    if (pane.matches('[role="log"][aria-label="Messages"]') && rows.length
+            && rows.every(el => !el.parentElement?.closest('[role="row"]')
+                && el.querySelector('[dir="auto"], [aria-labelledby]'))) {
+        return {profile: 'semantic_rows', roots: rows};
+    }
+    return {profile: 'unknown', roots: []};
+};"""
+
 # One evaluate returns everything both readers need. `window.__fixturePath` is
 # only ever set by a test on a file:// page; on instagram.com it is undefined
 # and location.pathname is used.
 JS_RAW = r"""() => {
-""" + JS_ROW_LINES + JS_FIND_PANE + r"""
+""" + JS_ROW_LINES + JS_FIND_PANE + JS_MESSAGE_ROOTS + r"""
     const OUT = {
         path: (window.__fixturePath !== undefined && window.__fixturePath !== null)
             ? String(window.__fixturePath)
@@ -201,6 +217,13 @@ JS_RAW = r"""() => {
     const pane = findMessagePane();
     OUT.pane_present = !!pane;
     if (pane) {
+        const profile = messageRoots(pane);
+        OUT.parser_profile = profile.profile;
+        const roots = new Set(profile.roots);
+        const rootSelector = profile.profile === 'semantic_rows' ? '[role="row"]' : '[role="article"]';
+        const inMessage = el => roots.has(el.closest(rootSelector));
+        OUT.geometry_sender_verified = profile.profile === 'articles'
+            && getComputedStyle(pane).direction === 'ltr';
         const pr = pane.getBoundingClientRect();
         OUT.pane = {left: pr.left, right: pr.right, width: pr.width};
         // Instagram's column-reverse starts at zero at the NEWEST message.
@@ -269,7 +292,7 @@ JS_RAW = r"""() => {
             return null;
         };
 
-        for (const art of pane.querySelectorAll('[role="article"]')) {
+        for (const art of profile.roots) {
             const g = rect(art);
             // A quoted reply target is rendered as its own leaf; it is evidence
             // about the message, not the message text.
@@ -283,9 +306,9 @@ JS_RAW = r"""() => {
             // explicit reply marker, never a previous ordinary message.
             for (let node = art; !replyTo && node && node !== pane; node = node.parentElement) {
                 const quote = node.previousElementSibling;
-                if (!quote || quote.querySelector('[role="article"]')) continue;
+                if (!quote || quote.querySelector(rootSelector)) continue;
                 const marker = quote.previousElementSibling;
-                if (!marker || marker.querySelector('[role="article"]')) continue;
+                if (!marker || marker.querySelector(rootSelector)) continue;
                 const markerText = (marker.innerText || '').replace(/\s+/g, ' ').trim();
                 if (!/^(?:.{1,100} replied to (?:you|yourself)|you replied to .{1,100})(?: · \d+[smhdw])?$/i.test(markerText)) continue;
                 const label = mediaOf(quote);
@@ -311,7 +334,10 @@ JS_RAW = r"""() => {
                 text: own.join(' '),
                 media_label: mediaOf(art),
                 reply_to_text: replyTo,
-                edited: /(^|\s)edited(\s|$)/i.test(art.innerText || ''),
+                // Exact separate UI marker, never a word in message/quote text.
+                edited: [...art.querySelectorAll('span, [role="status"]')].some(el =>
+                    !el.closest('[dir="auto"], blockquote, [role="blockquote"]')
+                    && !el.children.length && (el.innerText || '').trim() === 'Edited'),
             });
         }
 
@@ -319,9 +345,9 @@ JS_RAW = r"""() => {
         // articles by `order` so a reply-target line can attach to the next one.
         let order = 0;
         const items = [];
-        for (const el of pane.querySelectorAll('[role="article"], [dir="auto"], [role="button"]')) {
-            if (el.getAttribute('role') === 'article') { items.push({order: order++, article: true, node: el}); continue; }
-            if (el.closest('[role="article"]') !== null) continue;
+        for (const el of pane.querySelectorAll('[role="article"], [role="row"], [dir="auto"], [role="button"]')) {
+            if (roots.has(el)) { items.push({order: order++, article: true, node: el}); continue; }
+            if (inMessage(el)) continue;
             if ([...quoteNodes].some(q => q.contains(el))) continue;
             if (el.getAttribute('role') === 'button') {
                 if (el.querySelector('[dir="auto"], [role="article"], [role="button"]') || el.closest('[dir="auto"]')) continue;
@@ -330,7 +356,7 @@ JS_RAW = r"""() => {
                         || !/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji_Modifier}\uFE0F\u200D\s\d]+$/u.test(text)) continue;
                 let target = null;
                 for (let node = el.parentElement; node && node !== pane; node = node.parentElement) {
-                    const articles = node.querySelectorAll('[role="article"]');
+                    const articles = profile.roots.filter(root => node.contains(root));
                     if (articles.length > 1) break;
                     if (articles.length === 1) {
                         if (articles[0].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) target = articles[0];
@@ -617,7 +643,7 @@ def interpret_read(
 
         laid = bool(art.get("laid"))
         sender = "unknown"
-        if laid:
+        if laid and raw.get('geometry_sender_verified', raw.get('parser_profile') is None):
             sender = "owner" if float(art.get("centre", 0.0)) > pane_mid else "contact"
 
         evidence = {"order": order, "in_article": True}
@@ -668,4 +694,8 @@ def interpret_read(
         composer_text=normalize(raw.get("composer_text") or ""),
         navigations_used=navigations_used,
         detail=extra_detail,
+        coverage={"parser_profile": raw.get("parser_profile", "unknown"),
+                  "visual_edge": bool(raw.get("at_visual_start")),
+                  "rendered_count": sum(e.laid_out and e.kind in ("text", "media", "unknown") for e in events),
+                  "server_complete": False},
     )
