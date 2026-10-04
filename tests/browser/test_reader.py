@@ -502,6 +502,38 @@ class B03KindsTest(BrowserCase):
 
 
 class B04CompletenessTest(BrowserCase):
+    async def test_history_owner_input_interrupts_without_restoring_over_owner(self):
+        from shadow.instagram import InstagramBrowser
+        from unittest.mock import patch
+        await self.open_fixture('thread_long.html')
+        adapter = InstagramBrowser(); adapter.page = self.page
+        async def owner_input():
+            await asyncio.sleep(0.1)
+            await self.page.mouse.click(700, 200)
+        task = asyncio.create_task(owner_input())
+        with patch.object(adapter, '_assert_on_site'):
+            result = await adapter._load_history(100)
+        await task
+        self.assertEqual(result.status, 'dom_unknown')
+        self.assertEqual(result.detail, 'history_owner_interrupted')
+        self.assertFalse(result.coverage['scroll_position_restored'])
+        self.assertTrue(await self.page.evaluate('window.__shadowHistoryGuard === undefined'))
+
+    async def test_history_pane_replacement_aborts_and_cleans_guard(self):
+        from shadow.instagram import InstagramBrowser
+        from unittest.mock import patch
+        await self.open_fixture('thread_long.html')
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            pane.addEventListener('scroll', () => pane.replaceWith(pane.cloneNode(true)), {once:true});
+        }""")
+        adapter = InstagramBrowser(); adapter.page = self.page
+        with patch.object(adapter, '_assert_on_site'):
+            result = await adapter._load_history(100)
+        self.assertEqual(result.status, 'dom_unknown')
+        self.assertFalse(result.coverage['scroll_position_restored'])
+        self.assertTrue(await self.page.evaluate('window.__shadowHistoryGuard === undefined'))
+
     """B04: order preserved, repeats kept, incompleteness reported."""
 
     async def test_a_long_thread_keeps_order_and_both_repeats(self) -> None:

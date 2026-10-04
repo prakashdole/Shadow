@@ -67,11 +67,6 @@ from shadow.storage import Storage
 # bound; there is no settings-table row for it yet.
 ROLE_CALL_TIMEOUT = 30.0  # PROPOSED SETTING: role_call_timeout
 
-# How many stored events are offered to alignment as the overlap tail. Bounded
-# so a long thread cannot make every read quadratic, and large enough that a
-# real overlap is found.
-ALIGN_TAIL_EVENTS = 200  # PROPOSED SETTING: align_tail_events
-
 # The seconds-resolution bucket used to rate-limit a repeated `dom_unknown`
 # alert to once an hour.
 DOM_UNKNOWN_ALERT_SECONDS = 3600  # PROPOSED SETTING: dom_unknown_alert_window
@@ -503,14 +498,47 @@ class Coordinator:
         report.held += 1
 
     # --- ingestion and alignment -----------------------------------
-    async def _ingest(self, conversation_id: int, result: ReadResult, report: TickReport) -> None:
+    async def _ingest(self, conversation_id: int, result: ReadResult, report: TickReport,
+                      *, recover: bool = True) -> None:
         stored = self.storage.get_events(conversation_id)
         conversation = self.storage.get_conversation(conversation_id)
         window = A.keys_of(result.events)
         if not conversation["first_seen_baseline_done"]:
             self._record_baseline(conversation_id, result, report)
             return
-        result_align = A.align(A.keys_of(stored[-ALIGN_TAIL_EVENTS:]), window)
+        result_align = A.align(A.keys_of(stored[-self.settings.align_tail_events:]), window)
+        if result_align.status in ("gap", "ambiguous") and recover:
+            # One bounded read, on the current thread only. Re-enter all read
+            # guards after awaiting; recovery is not permission to bypass them.
+            recovered = await self.browser.read_thread(conversation["thread_id"],
+                                                       want=self.settings.align_tail_events)
+            if recovered.status in GLOBAL_PAUSE_STATUSES:
+                self._global_pause(recovered.status)
+                report.stopped_reason = recovered.status
+                return
+            current = self.storage.get_conversation(conversation_id)
+            if self.paused or current["paused_reason"] == "owner_pause":
+                self._hold(conversation_id, "owner_pause", report, tier=None)
+                return
+            if recovered.status != "ok" or recovered.navigations_used:
+                for _ in range(recovered.navigations_used):
+                    self._navigations_left()
+                self._hold(conversation_id, f"recovery_{recovered.status}", report, tier="action")
+                return
+            if recovered.thread_id != conversation["thread_id"]:
+                self._hold(conversation_id, "wrong_thread", report, tier="action")
+                return
+            if recovered.composer_text:
+                self._hold(conversation_id, "manual_text", report, tier="info")
+                return
+            if recovered.is_group is not False:
+                self._hold(conversation_id, "group_uncertain", report, tier="action")
+                return
+            if current["contact_status"] == "excluded" or self._owner_active(current):
+                self._hold(conversation_id, "owner_active", report, tier=None)
+                return
+            await self._ingest(conversation_id, recovered, report, recover=False)
+            return
         if result_align.status in ("gap", "ambiguous"):
             # No work is created from a window that cannot be placed: storing it
             # would invent or drop messages.
@@ -524,7 +552,6 @@ class Coordinator:
             return
         if not result_align.is_new:
             return
-        new_keys = result_align.new_events(window)
         new_events = result.events[result_align.new_start_index:]
         self._store_events(conversation_id, new_events, stored)
         report.ingested += len(new_events)
@@ -1083,7 +1110,7 @@ class Coordinator:
             self._hold(conversation_id, "group" if result.is_group else "group_uncertain", report, tier="action")
             return False
         stored = self.storage.get_events(conversation_id)
-        result_align = A.align(A.keys_of(stored[-ALIGN_TAIL_EVENTS:]), A.keys_of(result.events))
+        result_align = A.align(A.keys_of(stored[-self.settings.align_tail_events:]), A.keys_of(result.events))
         if result_align.status == "ok" and result_align.new_start_index < len(result.events):
             # The contact said something after the draft was formed. The draft is
             # cancelled and the thread goes back to assessment.

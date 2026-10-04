@@ -111,6 +111,7 @@ class FakeBrowser:
         self.send_results = list(send_results or [])
         self.check_result = check_result
         self.calls: list[str] = []
+        self.history_requests: list[tuple[str, int]] = []
         self.sent: list[tuple[str, str]] = []
         self.check_points: list[str] = []
         self.opened: list[C.InboxRow] = []
@@ -128,6 +129,8 @@ class FakeBrowser:
 
     async def read_thread(self, thread_id: str, want: int = 0) -> C.ReadResult:
         self.calls.append(f"read_thread:{thread_id}")
+        if want:
+            self.history_requests.append((thread_id, want))
         return self._read_for(thread_id)
 
     async def send_one(self, thread_id: str, text: str, check) -> C.SendResult:

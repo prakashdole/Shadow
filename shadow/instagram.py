@@ -125,6 +125,12 @@ _JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, 
             if (done) return;
             clearTimeout(timer);
             const raw = read(), now = performance.now(), sig = signature(raw);
+            if (scroll && window.__shadowHistoryGuard?.interrupted) {
+                finish(raw, 'owner_interrupted'); return;
+            }
+            if (scroll && (findMessagePane() !== pane || !pane.isConnected)) {
+                finish(raw, 'pane_replaced'); return;
+            }
             if (raw.path !== expectedPath) { finish(raw, 'path_changed'); return; }
             if (/^\/(?:accounts\/login|challenge|checkpoint|suspended)/.test(raw.path)
                     || raw.seen) { finish(raw, 'status'); return; }
@@ -141,12 +147,16 @@ _JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, 
             }
             timer = setTimeout(check, sample);
         };
-        const observer = new MutationObserver(check);
+        // Coalesce a mutation burst; timers still sample geometry changes.
+        const observer = new MutationObserver(() => {
+            clearTimeout(timer); timer = setTimeout(check, 0);
+        });
         const watchRoot = thread ? (pane || findMessagePane() || document.body)
             : (document.querySelector('[aria-label="Thread list"]') || document.body);
-        observer.observe(watchRoot, {subtree: true, childList: true,
+        observer.observe(watchRoot.parentElement || watchRoot, {subtree: true, childList: true,
             characterData: true, attributes: true,
-            attributeFilter: ['aria-busy', 'aria-pressed', 'style', 'class']});
+            attributeFilter: ['aria-busy', 'aria-pressed', 'style', 'class',
+                              'role', 'aria-label', 'aria-labelledby', 'dir', 'alt', 'href']});
         const deadline = setTimeout(() => finish(read(), 'timeout'), budget);
         if (scroll) {
             // Keep viewport overlap; dispatch only after observation is armed.
@@ -154,6 +164,36 @@ _JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, 
         }
         check();
     });
+}"""
+
+_JS_HISTORY_BEGIN = r"""() => {
+""" + JS_FIND_PANE + r"""
+    const pane = findMessagePane();
+    if (!pane || window.__shadowHistoryGuard) return false;
+    const guard = {pane, top: pane.scrollTop, extent: pane.scrollHeight,
+        path: location.pathname, interrupted: false};
+    guard.onInput = event => { if (event.isTrusted) guard.interrupted = true; };
+    guard.types = ['wheel', 'pointerdown', 'keydown', 'beforeinput'];
+    for (const type of guard.types) document.addEventListener(type, guard.onInput, true);
+    window.__shadowHistoryGuard = guard;
+    return true;
+}"""
+
+_JS_HISTORY_END = r"""() => {
+""" + JS_FIND_PANE + r"""
+    const guard = window.__shadowHistoryGuard;
+    if (!guard) return {restored: false, reason: 'guard_missing'};
+    for (const type of guard.types) document.removeEventListener(type, guard.onInput, true);
+    delete window.__shadowHistoryGuard;
+    if (guard.interrupted) return {restored: false, reason: 'owner_interrupted'};
+    if (location.pathname !== guard.path || findMessagePane() !== guard.pane
+            || !guard.pane.isConnected) return {restored: false, reason: 'view_replaced'};
+    const pane = guard.pane;
+    const reversed = getComputedStyle(pane).flexDirection === 'column-reverse';
+    const target = guard.top + (reversed ? 0 : pane.scrollHeight - guard.extent);
+    pane.scrollTo({top: target, behavior: 'instant'});
+    return {restored: Math.abs(pane.scrollTop - target) <= 2,
+            reason: 'scroll_position_only'};
 }"""
 
 # The nav profile link, if the header rendered one. Returned to Python only to
@@ -555,6 +595,8 @@ class InstagramBrowser:
             return ReadResult(status=failed.status, detail=failed.detail)
         navigations = 0
         if not same_thread(thread_id_from_url(self.page.url or ""), thread_id):
+            if want > 0:
+                return ReadResult(status="wrong_thread", detail="history_requires_current_thread")
             navigations = await self._goto(IG_THREAD.format(thread_id=thread_id))
             if not same_thread(thread_id_from_url(self.page.url or ""), thread_id):
                 return ReadResult(status="wrong_thread", thread_id=None,
@@ -590,6 +632,24 @@ class InstagramBrowser:
                        detail=result.detail or self._detail())
 
     async def _load_history(self, want: int) -> ReadResult:
+        assert self.page
+        if not await self.page.evaluate(_JS_HISTORY_BEGIN):
+            return ReadResult('dom_unknown', detail='history_guard_unavailable')
+        try:
+            result = await self._collect_history(want)
+        finally:
+            restoration = await self.page.evaluate(_JS_HISTORY_END)
+        coverage = {**result.coverage, 'requested_count': want,
+                    'collected_count': sum(e.kind in ('text', 'media', 'unknown') for e in result.events),
+                    'scroll_position_restored': restoration['restored'],
+                    'view_content_restored': False,
+                    'restoration_reason': restoration['reason']}
+        if restoration['reason'] in ('owner_interrupted', 'view_replaced'):
+            return replace(result, status='dom_unknown', complete=False,
+                           detail='history_' + restoration['reason'], coverage=coverage)
+        return replace(result, coverage=coverage)
+
+    async def _collect_history(self, want: int) -> ReadResult:
         """Collect bounded overlapping windows, oldest first, without navigation.
 
         No content hash deduplication, guessed overlap or silent unmatched page.
@@ -622,6 +682,8 @@ class InstagramBrowser:
             self._assert_on_site()
             if settled['reason'] == 'path_changed':
                 return ReadResult('wrong_thread', detail='thread_changed_during_history')
+            if settled['reason'] in ('owner_interrupted', 'pane_replaced'):
+                return ReadResult('dom_unknown', detail='history_' + settled['reason'])
             older = interpret_read(settled['raw'], thread_id)
             if older.status != 'ok':
                 return older

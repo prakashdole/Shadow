@@ -155,6 +155,35 @@ class TestAccountBinding(CoordinatorCase):
 
 
 class TestBaselineAndOverlap(CoordinatorCase):
+    async def test_gap_recovers_once_and_does_not_ingest_recovered_older_context(self) -> None:
+        conversation = self.conversation()
+        self.seed_history(conversation, "contact", "anchor")
+        self.seed_history(conversation, "owner", "answer")
+        self.inbox(row(0))
+        reads = iter([
+            read(THREAD_A, (event(0, "contact", "new"),)),
+            read(THREAD_A, (event(0, "contact", "older"), event(1, "contact", "anchor"),
+                            event(2, "owner", "answer"), event(3, "contact", "new"))),
+        ])
+        self.browser.reads[THREAD_A] = lambda: next(reads)
+        report = await self.coordinator.tick_discover()
+        self.assertEqual(report.ingested, 1)
+        self.assertEqual(self.browser.history_requests, [(THREAD_A, self.settings.align_tail_events)])
+        self.assertEqual([e["text"] for e in self.storage.get_events(conversation)],
+                         ["anchor", "answer", "new"])
+
+    async def test_recovery_manual_text_holds_without_ingestion(self) -> None:
+        conversation = self.conversation()
+        self.seed_history(conversation, "owner", "anchor")
+        self.inbox(row(0))
+        reads = iter([read(THREAD_A, (event(0, "contact", "new"),)),
+            read(THREAD_A, (event(0, "owner", "anchor"), event(1, "contact", "new")),
+                 composer_text="manual draft")])
+        self.browser.reads[THREAD_A] = lambda: next(reads)
+        report = await self.coordinator.tick_discover()
+        self.assertEqual(report.ingested, 0)
+        self.assertEqual(self.work(conversation)["held_reason"], "manual_text")
+
     async def test_deeper_context_is_not_stored_as_fresh_inbound(self) -> None:
         conversation = self.conversation()
         self.seed_history(conversation, "contact", "anchor")

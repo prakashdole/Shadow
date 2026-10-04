@@ -111,6 +111,7 @@ class ReadResult:
     composer_text: str = ""            # non-empty: manual text present -> hold
     navigations_used: int = 0
     detail: str = ""
+    coverage: dict = field(default_factory=dict)  # bounded facts, never server-complete proof
 
 
 @dataclass(frozen=True)

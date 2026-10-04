@@ -197,6 +197,7 @@ CHECKS = {
     "dom_settle_ms": _positive_int,
     "dom_sample_ms": _positive_int,
     "history_max_steps": _positive_int,
+    "align_tail_events": _positive_int,
     "history_step_timeout_ms": _positive_int,
     "inbox_check_interval": _int,
     "quiet_poll_interval": _int,
@@ -250,6 +251,7 @@ class Settings:
     dom_settle_ms: int = 150
     dom_sample_ms: int = 75
     history_max_steps: int = 24
+    align_tail_events: int = 200
     history_step_timeout_ms: int = 2_000
     inbox_check_interval: int = 60
     quiet_poll_interval: int = 300
