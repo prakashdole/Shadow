@@ -141,11 +141,36 @@ const messageRoots = pane => {
     return {profile: 'unknown', roots: []};
 };"""
 
+# Bind header and composer to the pane's nearest containing conversation strip.
+# A second composer is not resolved by taking the first match on the page.
+JS_THREAD_LAYOUT = JS_FIND_PANE + JS_MESSAGE_ROOTS + r"""
+const threadLayout = () => {
+    const pane = findMessagePane();
+    if (!pane) return {pane: null, roots: [], profile: 'unknown', links: [], boxes: []};
+    const profile = messageRoots(pane);
+    let scope = pane.parentElement;
+    let links = [];
+    for (let node = scope; node; node = node.parentElement) {
+        const candidates = [...node.querySelectorAll('a[href]')].filter(a =>
+            !pane.contains(a) && !a.closest('[aria-label="Thread list"]')
+            && !hiddenTree(a, node) && a.getBoundingClientRect().width > 0
+            && !!(a.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING)
+            && a.getBoundingClientRect().left >= document.documentElement.clientWidth * 0.15
+            && /^\/[^/]+\/?$/.test(a.getAttribute('href') || ''));
+        if (candidates.length) { scope = node; links = candidates; break; }
+        if (node === document.body) break;
+    }
+    const boxes = [...(scope?.querySelectorAll('div[contenteditable="true"][aria-label="Message"]') || [])]
+        .filter(box => !profile.roots.some(root => root.contains(box)) && !hiddenTree(box, scope)
+            && box.getBoundingClientRect().width > 0);
+    return {pane, ...profile, links, boxes};
+};"""
+
 # One evaluate returns everything both readers need. `window.__fixturePath` is
 # only ever set by a test on a file:// page; on instagram.com it is undefined
 # and location.pathname is used.
 JS_RAW = r"""() => {
-""" + JS_ROW_LINES + JS_FIND_PANE + JS_MESSAGE_ROOTS + r"""
+""" + JS_ROW_LINES + JS_THREAD_LAYOUT + r"""
     const OUT = {
         path: (window.__fixturePath !== undefined && window.__fixturePath !== null)
             ? String(window.__fixturePath)
@@ -223,11 +248,13 @@ JS_RAW = r"""() => {
 
     // --- message pane: message ancestor, then cold-layout fallback -------
     const vw = document.documentElement.clientWidth;
-    const pane = findMessagePane();
+    const layout = threadLayout();
+    const pane = layout.pane;
     OUT.pane_present = !!pane;
     if (pane) {
-        const profile = messageRoots(pane);
+        const profile = layout;
         OUT.parser_profile = profile.profile;
+        OUT.composer_ambiguous = layout.boxes.length > 1;
         const roots = new Set(profile.roots);
         const rootSelector = profile.profile === 'semantic_rows' ? '[role="row"]' : '[role="article"]';
         const inMessage = el => !!el.closest(rootSelector);
@@ -252,14 +279,8 @@ JS_RAW = r"""() => {
             });
 
         // Header evidence: the strip above the message list, right of the list.
-        for (const a of document.querySelectorAll('a[href]')) {
-            const r = a.getBoundingClientRect();
-            if (r.width === 0 && r.height === 0) continue;
-            if (pane.contains(a) || (list && list.contains(a))) continue;
-            if (r.left < vw * 0.15) continue;
-            if (r.top > pr.top + 140) continue;
-            const href = a.getAttribute('href') || '';
-            if (!/^\/[^/]+\/?$/.test(href)) continue;     // a profile link shape
+        const contactNames = new Set(layout.links.map(a => (a.innerText || '').trim()).filter(Boolean));
+        for (const a of layout.links) {
             OUT.header.profile_links++;
             if (a.querySelector('img')) OUT.header.avatars++;
         }
@@ -303,6 +324,15 @@ JS_RAW = r"""() => {
 
         for (const art of profile.roots) {
             const g = rect(art);
+            const labelNodes = (art.getAttribute('aria-labelledby') || '').split(/\s+/)
+                .map(id => document.getElementById(id)).filter(el => el && art.contains(el));
+            const senderLabels = [art.getAttribute('aria-label') || '',
+                ...labelNodes.map(el => textOf(el))];
+            const senderCandidates = senderLabels.flatMap(label => {
+                if (label === 'Sent by you' || label === 'Message from you') return ['owner'];
+                const from = label.match(/^Message from (.+)$/);
+                return from ? [contactNames.has(from[1]) ? 'contact' : 'unknown'] : [];
+            });
             // A quoted reply target is rendered as its own leaf; it is evidence
             // about the message, not the message text.
             let replyTo = null;
@@ -329,6 +359,8 @@ JS_RAW = r"""() => {
             }
             const own = leavesOf(art)
                 .filter(el => !el.closest('blockquote, [role="blockquote"]'))
+                .filter(el => !labelNodes.some(label => label.contains(el)
+                    && /^Message from /.test(textOf(label))))
                 .map(textOf).filter(Boolean);
             // Large emoji-only bubbles have no dir=auto. Their labelled
             // role=none content is still text, not an unsupported empty card.
@@ -345,6 +377,7 @@ JS_RAW = r"""() => {
                 text: own.join(' '),
                 media_label: mediaOf(art),
                 reply_to_text: replyTo,
+                sender_candidates: senderCandidates,
                 // Exact separate UI marker, never a word in message/quote text.
                 edited: [...art.querySelectorAll('span, [role="status"]')].some(el =>
                     !el.closest('[dir="auto"], blockquote, [role="blockquote"]')
@@ -403,7 +436,7 @@ JS_RAW = r"""() => {
             && /^seen(?: by .*| just now| \d+\s*[smhdw](?: ago)?)?$/i.test(i.text));
     }
 
-    const box = document.querySelector('div[contenteditable="true"][aria-label="Message"]');
+    const box = layout.boxes.length === 1 ? layout.boxes[0] : null;
     OUT.composer_text = box ? (box.innerText || '').trim() : '';
 
     return OUT;
@@ -412,7 +445,10 @@ JS_RAW = r"""() => {
 # The composer, for the send primitive. Kept beside the reader so the two agree
 # on what "the composer" is.
 JS_COMPOSER = r"""() => {
-    const box = document.querySelector('div[contenteditable="true"][aria-label="Message"]');
+""" + JS_THREAD_LAYOUT + r"""
+    const layout = threadLayout();
+    const box = ['articles', 'semantic_rows'].includes(layout.profile)
+        && layout.boxes.length === 1 ? layout.boxes[0] : null;
     if (!box) return null;
     box.focus();
     return (box.innerText || '').trim();
@@ -422,7 +458,10 @@ JS_COMPOSER = r"""() => {
 # between typing and Enter: the text must not survive, or a later send could
 # send it. Reports whether the box is now empty.
 JS_CLEAR_COMPOSER = r"""() => {
-    const box = document.querySelector('div[contenteditable="true"][aria-label="Message"]');
+""" + JS_THREAD_LAYOUT + r"""
+    const layout = threadLayout();
+    const box = ['articles', 'semantic_rows'].includes(layout.profile)
+        && layout.boxes.length === 1 ? layout.boxes[0] : null;
     if (!box) return null;
     box.focus();
     const r = document.createRange();
@@ -622,6 +661,8 @@ def _interpret_read(
     if raw.get("loading"):
         return ReadResult(status="dom_unknown", thread_id=thread_id,
                           navigations_used=navigations_used, detail="thread_loading")
+    if raw.get('composer_ambiguous'):
+        return ReadResult('dom_unknown', thread_id=thread_id, detail='composer_ambiguous')
 
     pane = raw.get("pane") or {}
     pane_left = pane.get("left", 0.0)
@@ -690,10 +731,18 @@ def _interpret_read(
 
         laid = bool(art.get("laid"))
         sender = "unknown"
+        basis = 'unavailable'
         if laid and raw.get('geometry_sender_verified', raw.get('parser_profile') is None):
             sender = "owner" if float(art.get("centre", 0.0)) > pane_mid else "contact"
+            basis = 'verified_geometry'
+        explicit = set(art.get('sender_candidates') or [])
+        if explicit:
+            if len(explicit) != 1 or 'unknown' in explicit or (sender != 'unknown' and sender not in explicit):
+                sender, basis = 'unknown', 'conflicting'
+            elif laid:
+                sender, basis = next(iter(explicit)), 'accessibility'
 
-        evidence = {"order": order, "in_article": True}
+        evidence = {"order": order, "in_article": True, 'sender_basis': basis}
         if art.get("edited"):
             evidence["edited"] = True
         events.append(ObservedEvent(

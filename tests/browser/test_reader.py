@@ -228,6 +228,38 @@ class B02IdentityTest(BrowserCase):
 
 
 class B03KindsTest(BrowserCase):
+    async def test_accessible_sender_is_scoped_and_conflicts_hold(self):
+        await self.open_fixture('thread_1to1.html')
+        await self.page.evaluate("""() => {
+            const first = document.querySelector('[role=article]');
+            first.setAttribute('aria-label', 'Sent by you');
+        }""")
+        result = await self.read()
+        self.assertEqual(result.events[0].sender, 'unknown')
+        self.assertEqual(result.events[0].evidence['sender_basis'], 'conflicting')
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            pane.setAttribute('role', 'log'); pane.setAttribute('aria-label', 'Messages');
+            for (const art of pane.querySelectorAll('[role=article]')) {
+                art.setAttribute('role', 'row'); art.setAttribute('aria-roledescription', 'message');
+            }
+            const first = pane.querySelector('[role=row]');
+            first.removeAttribute('aria-label');
+            const right = document.querySelector('.right');
+            right.insertAdjacentHTML('beforeend', '<div contenteditable="true" aria-label="Message"></div>');
+        }""")
+        result = await self.read()
+        self.assertEqual(result.events[0].sender, 'contact')
+        self.assertEqual(result.events[0].evidence['sender_basis'], 'accessibility')
+        self.assertNotIn('Message from', result.events[0].text)
+
+    async def test_composer_selection_rejects_competing_thread_controls(self):
+        from shadow.dom import JS_COMPOSER
+        await self.open_fixture('thread_long.html')
+        await self.page.evaluate("document.querySelector('.right').insertAdjacentHTML('beforeend', '<div contenteditable=\"true\" aria-label=\"Message\">other draft</div>')")
+        self.assertEqual((await self.read()).status, 'dom_unknown')
+        self.assertIsNone(await self.page.evaluate(JS_COMPOSER))
+
     async def test_ordinary_edited_word_is_not_an_edit_marker(self):
         await self.open_fixture('thread_1to1.html')
         await self.page.evaluate("""() => {

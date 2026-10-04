@@ -292,13 +292,15 @@ async def _send_on_page(
         return SendResult(status="failed_before_submit", thread_id=thread_id,
                           error_code="aborted_before_type")
 
-    await page.evaluate(JS_COMPOSER)
+    if await page.evaluate(JS_COMPOSER) is None:
+        return SendResult(status='failed_before_submit', thread_id=thread_id,
+                          error_code='composer_unavailable')
     await page.keyboard.insert_text(text)
 
     # (e) aborted between typing and Enter: the composer must not keep the text.
     if not await check("before_enter"):
         selected = await page.evaluate(JS_CLEAR_COMPOSER)
-        if selected is not False:
+        if selected is True:
             await page.keyboard.press("Backspace")
         remaining = (await page.evaluate(JS_COMPOSER) or "").strip()
         if remaining:
