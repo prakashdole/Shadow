@@ -417,9 +417,22 @@ CREATE TABLE dom_observations (
 CREATE INDEX dom_observations_thread ON dom_observations(conversation_id, id);
 """
 
+SCHEMA_V11 = """
+CREATE TABLE event_revisions (
+    id INTEGER PRIMARY KEY,
+    event_id INTEGER NOT NULL REFERENCES events(id),
+    observed_at TEXT NOT NULL,
+    reason TEXT NOT NULL CHECK(reason IN ('edit', 'metadata')),
+    previous_json TEXT NOT NULL,
+    current_json TEXT NOT NULL
+);
+CREATE INDEX event_revisions_event ON event_revisions(event_id, id);
+"""
+
 MIGRATIONS: tuple[tuple, ...] = (
     (1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3), (4, SCHEMA_V4), (5, SCHEMA_V5),
     (6, SCHEMA_V6), (7, SCHEMA_V7), (8, SCHEMA_V8), (9, SCHEMA_V9), (10, SCHEMA_V10),
+    (11, SCHEMA_V11),
 )
 CURRENT_VERSION = MIGRATIONS[-1][0]
 
@@ -1003,6 +1016,52 @@ class Storage:
         """One aligned window is atomic; a failed item cannot leave its prefix."""
         with self.transaction() as conn:
             return [self._insert_event(conn, **fields) for fields in events]
+
+    def revise_event(self, conversation_id: int, event_id: int, *, metadata: dict,
+                     text: str | None = None) -> bool:
+        """Called only after unique reobservation mapping; preserve every prior value.
+
+        No deletion/unsend inference and no platform identity claim. Reactions
+        stay local evidence, not model context. Content changes invalidate work
+        in the coordinator's enclosing transaction.
+        """
+        if (type(metadata) is not dict or not set(metadata) <= {'edited', 'reactions'}
+                or ('edited' in metadata and type(metadata['edited']) is not bool)
+                or ('reactions' in metadata and (type(metadata['reactions']) is not list
+                    or any(type(value) is not str for value in metadata['reactions'])))
+                or (text is not None and (type(text) is not str or metadata.get('edited') is not True))):
+            raise StorageError('Invalid event revision')
+        with self.transaction() as conn:
+            row = conn.execute('SELECT * FROM events WHERE id = ? AND conversation_id = ?',
+                               (event_id, conversation_id)).fetchone()
+            if not row:
+                raise StorageError('Revision target is not in this conversation')
+            evidence = json.loads(row['evidence_json'] or '{}')
+            prior_metadata = {key: evidence[key] for key in ('edited', 'reactions') if key in evidence}
+            # Omitted fields are unknown, not removals. An explicit empty list
+            # is removal evidence only after the caller maps this same target.
+            current_metadata = {**prior_metadata, **metadata}
+            previous = {'text': row['text'], 'metadata': prior_metadata, 'origin': row['origin']}
+            current = {'text': row['text'] if text is None else text,
+                       'metadata': current_metadata,
+                       'origin': 'unknown' if text is not None else row['origin']}
+            if previous == current:
+                return False
+            before = json.dumps(previous, ensure_ascii=False, sort_keys=True, allow_nan=False)
+            after = json.dumps(current, ensure_ascii=False, sort_keys=True, allow_nan=False)
+            conn.execute('INSERT INTO event_revisions '
+                         '(event_id, observed_at, reason, previous_json, current_json) VALUES (?, ?, ?, ?, ?)',
+                         (event_id, utcnow(), 'edit' if text is not None else 'metadata', before, after))
+            conn.execute('UPDATE events SET text = ?, origin = ?, evidence_json = ? WHERE id = ?',
+                         (current['text'], current['origin'],
+                          json.dumps({**evidence, **current_metadata}, ensure_ascii=False, allow_nan=False), event_id))
+            return True
+
+    def event_revisions(self, event_id: int) -> list[dict]:
+        rows = self._conn.execute('SELECT * FROM event_revisions WHERE event_id = ? ORDER BY id',
+                                  (event_id,)).fetchall()
+        return [{**dict(row), 'previous': json.loads(row['previous_json']),
+                 'current': json.loads(row['current_json'])} for row in rows]
 
     def get_legacy_events(self, legacy_id: int) -> list[dict]:
         rows = self._conn.execute(

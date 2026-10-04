@@ -77,6 +77,12 @@ Use dataclasses plus explicit validation initially; no new validation framework 
 - Private `dom_observations`: bounded changed snapshots retaining window-local
   metadata and unresolved relationships; never model context or inferred deletes
   (D47). Initial event evidence is preserved separately from canonical content.
+- `event_revisions` (v11, D51): prior/current canonical text and positively
+  reobserved edit/reaction metadata. Unique aligned targets only; one bracketed
+  same-page-node edit requires unchanged unique flanks. No platform-ID claim,
+  deletion-by-absence, unsend inference or fabricated reply relationship. Content
+  changes invalidate sourced facts and pending work; original content is retained.
+  Roll back with the verified pre-v11 backup, never by dropping revision data.
 - `ObservedEvent`: local event ID, thread ID, sender (`owner|contact|unknown`), kind (`text|media|reaction|system|unknown`), text, observed UTC time, platform timestamp/ID when exposed, reply target when observed, source (`import|dom|confirmed_send`), confidence/evidence, sequence position, origin (`owner_authored|shadow_generated|unknown`).
 - `ReadResult`: `ok|empty_verified|login_required|challenge|dom_unknown|wrong_thread|ambiguous_identity`, events, observed thread/account binding, completeness flag, pane revision. Empty list alone is not a status.
 - `RiskAssessment`: schema version; `risk=none|money|commitment|distress|privacy|unsupported|uncertain`; `reason_code`; `action_hint=proceed|hold|urgent`; `signals` (subset of `confusion`, `automation_question`, `owner_needed`); evidence event IDs. Produced by the risk role for every new inbound batch. Deterministic cues are computed separately and may raise priority to `urgent` or `hold`, never lower it.

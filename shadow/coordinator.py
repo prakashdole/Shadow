@@ -517,7 +517,11 @@ class Coordinator:
         if not conversation["first_seen_baseline_done"]:
             self._record_baseline(conversation_id, result, report)
             return
-        result_align = A.align(A.keys_of(stored[-self.settings.align_tail_events:]), window)
+        tail = stored[-self.settings.align_tail_events:]
+        result_align = A.align(A.keys_of(tail), window)
+        edits = []
+        if result_align.status == 'gap':
+            result_align, edits = self._align_edits(tail, result.events)
         if result_align.status in ("gap", "ambiguous") and recover:
             # One bounded read, on the current thread only. Re-enter all read
             # guards after awaiting; recovery is not permission to bypass them.
@@ -562,12 +566,73 @@ class Coordinator:
             )
             report.note(f"conversation {conversation_id}: {result_align.status}")
             return
+        # Only the uniquely matched overlap can mutate canonical metadata.
+        # Window-local reaction orders never become fabricated message IDs.
+        matched = result.events[result_align.new_start_index - result_align.overlap:
+                                result_align.new_start_index]
+        content_changed = False
+        with self.storage.transaction():
+            for target, observed in zip(tail[-result_align.overlap:] if result_align.overlap else [], matched):
+                if not observed.laid_out:
+                    continue
+                metadata = {key: observed.evidence[key] for key in ('edited', 'reactions')
+                            if key in observed.evidence}
+                edited = target['id'] in edits
+                changed = self.storage.revise_event(conversation_id, target['id'],
+                    metadata=metadata, text=observed.text if edited else None)
+                content_changed |= edited and changed
+            if content_changed:
+                from shadow.context_memory import ContextMemory
+                facts = self.storage.conn.execute('SELECT id, source_event_ids FROM memory_facts '
+                    'WHERE conversation_id = ? AND status IN (\'active\', \'candidate\')',
+                    (conversation_id,)).fetchall()
+                for fact in facts:
+                    if set(json.loads(fact['source_event_ids'])) & set(edits):
+                        self.storage.conn.execute("UPDATE memory_facts SET status = 'uncertain' WHERE id = ?", (fact['id'],))
+                ContextMemory(self.storage).invalidate(conversation_id)
+        if content_changed:
+            stored = A.sequence_events(self.storage.get_events(conversation_id))
         if not result_align.is_new:
             return
         new_events = result.events[result_align.new_start_index:]
         self._store_events(conversation_id, new_events, stored)
         report.ingested += len(new_events)
         await self._after_new_events(conversation_id, new_events, report)
+
+    @staticmethod
+    def _align_edits(stored, events):
+        """One same-node text edit, bracketed by globally unique unchanged keys.
+
+        Recycling/replacement, multiple edits, missing flanks and changed sender,
+        kind/media/quote evidence fail closed. Reload loses continuity by design.
+        """
+        old, new = A.keys_of(stored), A.keys_of(events)
+        candidates = []
+        for j in range(1, len(events) - 1):
+            event = events[j]
+            if not event.laid_out or event.kind != 'text' or not event.evidence.get('edited'):
+                continue
+            node = event.evidence.get('node_key')
+            if not node or new.count(new[j - 1]) != 1 or new.count(new[j + 1]) != 1:
+                continue
+            for i in range(1, len(stored) - 1):
+                evidence = json.loads(stored[i].get('evidence_json') or '{}')
+                if (stored[i]['source'] == 'dom' and evidence.get('node_key') == node
+                        and old[i][0:2] == new[j][0:2] and old[i][3:] == new[j][3:]
+                        and old[i][2] != new[j][2]
+                        and old.count(old[i - 1]) == old.count(old[i + 1]) == 1
+                        and old[i - 1] == new[j - 1] and old[i + 1] == new[j + 1]):
+                    candidates.append((i, j))
+        if len(candidates) != 1:
+            return A.align(old, new), []
+        i, j = candidates[0]
+        amended = list(new); amended[j] = old[i]
+        aligned = A.align(old, amended)
+        start = aligned.new_start_index - aligned.overlap
+        if (aligned.status != 'ok' or not start <= j < aligned.new_start_index
+                or len(stored) - aligned.overlap + j - start != i):
+            return A.align(old, new), []
+        return aligned, [stored[i]['id']]
 
     def _record_baseline(
         self, conversation_id: int, result: ReadResult, report: TickReport

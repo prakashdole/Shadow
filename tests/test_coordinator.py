@@ -155,6 +155,89 @@ class TestAccountBinding(CoordinatorCase):
 
 
 class TestBaselineAndOverlap(CoordinatorCase):
+    async def test_bracketed_same_node_edit_preserves_revision_and_invalidates_work(self):
+        from dataclasses import replace
+        from shadow.context_memory import ContextMemory
+        conversation = self.conversation()
+        baseline = (event(0, 'owner', 'left anchor'),
+                    replace(event(1, 'contact', 'old text'), evidence={'node_key': 'page:node'}),
+                    event(2, 'owner', 'right anchor'))
+        self.inbox(row(0)); self.script_reads(THREAD_A, *baseline)
+        await self.coordinator.tick_discover()
+        before = ContextMemory(self.storage).revision(conversation)
+        source = self.storage.get_events(conversation)[1]['id']
+        with self.storage.transaction() as conn:
+            conn.execute("INSERT INTO memory_facts(conversation_id, subject_id, kind, value_text, "
+                         "source_event_ids, observed_at, status) VALUES (?, ?, 'preference', ?, ?, ?, 'active')",
+                         (conversation, f'contact:{conversation}', 'old text', f'[{source}]', ST.iso(self.clock.now())))
+        self.queue_due_send(conversation, 'obsolete draft')
+        edited = replace(baseline[1], text='corrected text',
+                         evidence={'node_key': 'page:node', 'edited': True})
+        self.script_reads(THREAD_A, baseline[0], edited, baseline[2])
+        report = await self.coordinator.tick_discover()
+        self.assertEqual(report.ingested, 0)
+        self.assertEqual([e['text'] for e in self.storage.get_events(conversation)],
+                         ['left anchor', 'corrected text', 'right anchor'])
+        revisions = self.storage.event_revisions(self.storage.get_events(conversation)[1]['id'])
+        self.assertEqual(revisions[0]['previous']['text'], 'old text')
+        self.assertEqual(revisions[0]['current']['text'], 'corrected text')
+        self.assertNotEqual(ContextMemory(self.storage).revision(conversation), before)
+        self.assertEqual(self.work(conversation)['state'], 'held')
+        self.assertEqual(self.storage.outbox_items(conversation)[0]['state'], 'cancelled')
+        self.assertEqual(self.storage.conn.execute('SELECT status FROM memory_facts').fetchone()[0], 'uncertain')
+        self.assertEqual(self.browser.history_requests, [])
+        await self.coordinator.tick_discover()
+        self.assertEqual(len(self.storage.event_revisions(self.storage.get_events(conversation)[1]['id'])), 1)
+
+    async def test_edit_with_replaced_node_or_missing_flanks_cannot_rewrite(self):
+        from dataclasses import replace
+        conversation = self.conversation()
+        baseline = (event(0, 'owner', 'left anchor'),
+                    replace(event(1, 'contact', 'old text'), evidence={'node_key': 'page:node'}),
+                    event(2, 'owner', 'right anchor'))
+        self.inbox(row(0)); self.script_reads(THREAD_A, *baseline)
+        await self.coordinator.tick_discover()
+        self.script_reads(THREAD_A, baseline[0],
+            replace(baseline[1], text='replacement', evidence={'edited': True, 'node_key': 'other:node'}),
+            baseline[2])
+        await self.coordinator.tick_discover()
+        self.assertEqual(self.storage.get_events(conversation)[1]['text'], 'old text')
+        self.assertEqual(self.storage.event_revisions(self.storage.get_events(conversation)[1]['id']), [])
+        self.script_reads(THREAD_A,
+            replace(baseline[1], text='no flanks', evidence={'edited': True, 'node_key': 'page:node'}))
+        await self.coordinator.tick_discover()
+        self.assertEqual(self.storage.get_events(conversation)[1]['text'], 'old text')
+        self.assertEqual(self.storage.event_revisions(self.storage.get_events(conversation)[1]['id']), [])
+
+    async def test_aligned_reaction_revisions_do_not_create_reply_work(self):
+        from dataclasses import replace
+        conversation = self.conversation()
+        baseline = (event(0, 'contact', 'anchor'),
+                    replace(event(1, 'owner', 'answer'), evidence={'in_article': True, 'reactions': ['❤️']}))
+        self.inbox(row(0)); self.script_reads(THREAD_A, *baseline)
+        await self.coordinator.tick_discover()
+        self.script_reads(THREAD_A, baseline[0],
+            replace(baseline[1], evidence={'in_article': True, 'reactions': []}))
+        report = await self.coordinator.tick_discover()
+        self.assertEqual(report.ingested, 0)
+        target = self.storage.get_events(conversation)[1]
+        revisions = self.storage.event_revisions(target['id'])
+        self.assertEqual(revisions[0]['previous']['metadata']['reactions'], ['❤️'])
+        self.assertEqual(revisions[0]['current']['metadata']['reactions'], [])
+        self.assertEqual(self.decisions.calls, [])
+
+    async def test_repeated_targets_do_not_reconcile_reaction_metadata(self):
+        from dataclasses import replace
+        conversation = self.conversation()
+        repeated = replace(event(0, 'contact', 'same'), evidence={'reactions': ['❤️']})
+        self.inbox(row(0)); self.script_reads(THREAD_A, repeated, replace(repeated, position=1))
+        await self.coordinator.tick_discover()
+        changed = replace(repeated, evidence={'reactions': []})
+        self.script_reads(THREAD_A, changed, replace(changed, position=1))
+        await self.coordinator.tick_discover()
+        self.assertEqual([self.storage.event_revisions(e['id'])
+                          for e in self.storage.get_events(conversation)], [[], []])
+
     async def test_reaction_change_is_observation_not_new_sequence_or_reply_work(self) -> None:
         conversation = self.conversation()
         self.seed_history(conversation, "contact", "anchor")

@@ -228,6 +228,36 @@ class B02IdentityTest(BrowserCase):
 
 
 class B03KindsTest(BrowserCase):
+    async def test_page_local_node_continuity_and_bracketed_edit_ingestion(self):
+        import tempfile
+        from shadow import storage
+        from shadow.coordinator import Coordinator, TickReport
+        from shadow.settings import Settings
+        await self.open_fixture('thread_long.html')
+        before = await self.read()
+        await self.page.evaluate("""() => {
+            const art = document.querySelectorAll('[role=article]')[1];
+            art.querySelector('[dir=auto]').textContent = 'corrected fictional message';
+            art.insertAdjacentHTML('beforeend', '<span role="status">Edited</span>');
+        }""")
+        after = await self.read()
+        self.assertEqual(before.events[1].evidence['node_key'], after.events[1].evidence['node_key'])
+        with tempfile.TemporaryDirectory() as scratch:
+            with storage.open_storage(scratch) as db:
+                cid = db.get_or_create_conversation('test', '12345')
+                coordinator = Coordinator(db, None, None, Settings(), account_id='test')
+                await coordinator._ingest(cid, before, TickReport())
+                await coordinator._ingest(cid, after, TickReport(), recover=False)
+                target = db.get_events(cid)[1]
+                self.assertEqual(target['text'], 'corrected fictional message')
+                self.assertEqual(len(db.event_revisions(target['id'])), 1)
+        await self.page.evaluate("""() => {
+            const art = document.querySelectorAll('[role=article]')[1];
+            art.replaceWith(art.cloneNode(true));
+        }""")
+        replaced = await self.read()
+        self.assertNotEqual(after.events[1].evidence['node_key'], replaced.events[1].evidence['node_key'])
+
     async def test_accessible_sender_is_scoped_and_conflicts_hold(self):
         await self.open_fixture('thread_1to1.html')
         await self.page.evaluate("""() => {
@@ -259,6 +289,24 @@ class B03KindsTest(BrowserCase):
         await self.page.evaluate("document.querySelector('.right').insertAdjacentHTML('beforeend', '<div contenteditable=\"true\" aria-label=\"Message\">other draft</div>')")
         self.assertEqual((await self.read()).status, 'dom_unknown')
         self.assertIsNone(await self.page.evaluate(JS_COMPOSER))
+
+    async def test_labelled_semantic_rows_require_message_log_and_scoped_header(self):
+        await self.open_fixture('thread_long.html')
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            pane.setAttribute('role', 'log'); pane.setAttribute('aria-label', 'Messages');
+            pane.style.direction = 'rtl';
+            for (const art of pane.querySelectorAll('[role=article]')) {
+                art.setAttribute('role', 'row'); art.removeAttribute('aria-roledescription');
+                art.setAttribute('aria-label', 'Sent by you');
+            }
+        }""")
+        result = await self.read()
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(result.coverage['parser_profile'], 'semantic_rows')
+        self.assertTrue(all(e.sender == 'owner' for e in result.events))
+        await self.page.evaluate("document.querySelector('.pane').removeAttribute('role')")
+        self.assertEqual((await self.read()).status, 'dom_unknown')
 
     async def test_ordinary_edited_word_is_not_an_edit_marker(self):
         await self.open_fixture('thread_1to1.html')
@@ -557,6 +605,20 @@ class B03KindsTest(BrowserCase):
 
 
 class B04CompletenessTest(BrowserCase):
+    async def test_manual_text_arriving_before_restoration_prevents_scroll(self):
+        from shadow.instagram import _JS_HISTORY_BEGIN, _JS_HISTORY_END
+        await self.open_fixture('thread_long.html')
+        self.assertTrue(await self.page.evaluate(_JS_HISTORY_BEGIN))
+        await self.page.evaluate("""() => {
+            document.querySelector('.pane').scrollTop -= 100;
+            document.querySelector('[contenteditable]').textContent = 'owner draft';
+        }""")
+        before = await self.page.evaluate("document.querySelector('.pane').scrollTop")
+        result = await self.page.evaluate(_JS_HISTORY_END, [JS_RAW, 400, 150, 75, []])
+        self.assertEqual(result['reason'], 'owner_interrupted')
+        self.assertEqual(await self.page.evaluate("document.querySelector('.pane').scrollTop"), before)
+        self.assertTrue(await self.page.evaluate('window.__shadowHistoryGuard === undefined'))
+
     async def test_cancelled_history_never_dispatches_first_scroll(self):
         from shadow.instagram import _JS_HISTORY_BEGIN, _JS_HISTORY_END, _JS_WAIT_RAW
         await self.open_fixture('thread_long.html')
@@ -596,7 +658,7 @@ class B04CompletenessTest(BrowserCase):
                 'stored_anchor', 'requested_count_reached', 'server_complete'}
         self.assertTrue(keys <= result.coverage.keys())
         self.assertTrue(result.coverage['requested_count_reached'])
-        await self.page.evaluate("document.body.insertAdjacentHTML('beforeend', '<div contenteditable=\"true\" aria-label=\"Message\">owner typing</div>')")
+        await self.page.evaluate("document.querySelector('.right').insertAdjacentHTML('beforeend', '<div contenteditable=\"true\" aria-label=\"Message\">owner typing</div>')")
         held = await adapter._load_history(100)
         self.assertEqual(held.detail, 'history_manual_text')
         self.assertEqual(held.coverage['requested_count'], 100)
@@ -891,7 +953,9 @@ class B04CompletenessTest(BrowserCase):
             result = await adapter._load_history(3)
         self.assertEqual(result.status, 'dom_unknown')
         self.assertEqual(result.detail, 'history_ambiguous')
-        self.assertEqual(result.events, ())
+        self.assertEqual([e.text for e in result.events], ['ok', 'ok'])
+        self.assertTrue(result.coverage['ambiguous'])
+        self.assertFalse(result.complete)
 
 
 class B05GuardTest(BrowserCase):

@@ -111,7 +111,8 @@ _JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, 
     const signature = raw => JSON.stringify([raw.path, raw.rows, raw.header, raw.parser_profile,
         raw.composer_text, raw.pane,
         thread ? raw.articles.map(a => [a.text, a.media_label, a.reply_to_text, a.edited,
-            a.left, a.width, a.laid]) : null, thread ? raw.outside : null, raw.loading]);
+            a.sender_candidates, a.node_key, a.left, a.width, a.laid]) : null,
+        thread ? raw.outside : null, raw.loading, raw.composer_ambiguous]);
     const before = read();
     const beforeSignature = signature(before);
     const beforeScroll = pane?.scrollTop;
@@ -128,6 +129,10 @@ _JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, 
             clearTimeout(timer);
             const raw = read(), now = performance.now(), sig = signature(raw);
             if (window.__shadowHistoryGuard?.interrupted) {
+                finish(raw, 'owner_interrupted'); return;
+            }
+            if (scroll && raw.composer_text) {
+                if (window.__shadowHistoryGuard) window.__shadowHistoryGuard.interrupted = true;
                 finish(raw, 'owner_interrupted'); return;
             }
             if (scroll && (findMessagePane() !== pane || !pane.isConnected)) {
@@ -193,11 +198,14 @@ _JS_HISTORY_END = r"""async ([source, budget, quiet, sample, anchors]) => {
         if (guard.interrupted) return {restored: false, reason: 'owner_interrupted'};
         if (location.pathname !== guard.path || findMessagePane() !== guard.pane
                 || !guard.pane.isConnected) return {restored: false, reason: 'view_replaced'};
+        const read = eval('(' + source + ')');
+        const before = read();
+        if (before.composer_text) return {restored: false, reason: 'owner_interrupted'};
+        if (before.seen) return {restored: false, reason: 'receipts_visible'};
         const pane = guard.pane;
         const reversed = getComputedStyle(pane).flexDirection === 'column-reverse';
         const target = guard.top + (reversed ? 0 : pane.scrollHeight - guard.extent);
         pane.scrollTo({top: target, behavior: 'instant'});
-        const read = eval('(' + source + ')');
         const deadline = performance.now() + budget;
         let previous = null, since = performance.now();
         do {
@@ -292,14 +300,21 @@ async def _send_on_page(
         return SendResult(status="failed_before_submit", thread_id=thread_id,
                           error_code="aborted_before_type")
 
-    if await page.evaluate(JS_COMPOSER) is None:
+    composer = await page.evaluate(JS_COMPOSER)
+    if composer is None:
         return SendResult(status='failed_before_submit', thread_id=thread_id,
                           error_code='composer_unavailable')
+    if composer:
+        return SendResult(status='failed_before_submit', thread_id=thread_id,
+                          error_code='manual_text')
     await page.keyboard.insert_text(text)
 
     # (e) aborted between typing and Enter: the composer must not keep the text.
     if not await check("before_enter"):
         selected = await page.evaluate(JS_CLEAR_COMPOSER)
+        if selected is not True:
+            return SendResult(status='uncertain', thread_id=thread_id,
+                              error_code='composer_not_cleared')
         if selected is True:
             await page.keyboard.press("Backspace")
         remaining = (await page.evaluate(JS_COMPOSER) or "").strip()
@@ -763,8 +778,7 @@ class InstagramBrowser:
             ])
             self._assert_on_site()
             if settled['reason'] == 'path_changed':
-                return replace(result, status='wrong_thread', events=tuple(events), complete=False,
-                               detail='thread_changed_during_history')
+                return ReadResult('wrong_thread', detail='thread_changed_during_history')
             if settled['reason'] in ('owner_interrupted', 'pane_replaced'):
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
                                detail='history_' + settled['reason'])

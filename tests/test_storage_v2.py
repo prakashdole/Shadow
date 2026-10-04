@@ -55,6 +55,22 @@ class V2Case(unittest.TestCase):
 
 
 class TestFreshV2(V2Case):
+    def test_populated_v10_revision_migration_preserves_original_and_backup(self):
+        cid = self.conversation()
+        for _ in range(2):
+            self.storage.add_event(conversation_id=cid, sender='contact', kind='text',
+                text='same', source='dom', origin='unknown')
+        self.storage.close()
+        with sqlite3.connect(self.dir / ST.DB_FILENAME) as conn:
+            conn.execute('DROP TABLE event_revisions')
+            conn.execute('PRAGMA user_version = 10')
+        self.storage = ST.open_storage(self.dir)
+        self.assertEqual([e['text'] for e in self.storage.get_events(cid)], ['same', 'same'])
+        self.assertEqual(self.storage.conn.execute('PRAGMA foreign_key_check').fetchall(), [])
+        with sqlite3.connect(next((self.dir / ST.BACKUP_DIR).glob('pre-migration-v10-*.sqlite3'))) as backup:
+            self.assertEqual(backup.execute('PRAGMA user_version').fetchone()[0], 10)
+            self.assertEqual(backup.execute('SELECT count(*) FROM events').fetchone()[0], 2)
+
     def test_populated_v7_migration_preserves_data_and_verified_backup(self):
         cid = self.conversation()
         self.storage.add_event(conversation_id=cid, sender="contact", kind="text", text="fictional",
@@ -62,6 +78,7 @@ class TestFreshV2(V2Case):
         self.storage.close()
         with sqlite3.connect(self.dir / ST.DB_FILENAME) as conn:
             conn.execute("DROP TABLE role_calls")
+            conn.execute('DROP TABLE event_revisions')
             conn.execute("DROP TABLE dom_observations")
             conn.execute('ALTER TABLE events DROP COLUMN evidence_json')
             conn.execute('ALTER TABLE events DROP COLUMN media_label')
@@ -76,13 +93,13 @@ class TestFreshV2(V2Case):
             self.assertEqual(backup.execute("SELECT text FROM events").fetchone()[0], "fictional")
 
     def test_current_version_is_two_and_v1_sql_is_untouched(self) -> None:
-        self.assertEqual(ST.CURRENT_VERSION, 10)
+        self.assertEqual(ST.CURRENT_VERSION, 11)
         self.assertEqual(
             self.storage.conn.execute("PRAGMA user_version").fetchone()[0], ST.CURRENT_VERSION
         )
         # v1 is still described by v1 SQL: a fresh database applies both, and
         # the v1 statements are byte-identical to what P01 shipped.
-        self.assertEqual(len(ST.MIGRATIONS), 10)
+        self.assertEqual(len(ST.MIGRATIONS), 11)
         self.assertEqual(ST.MIGRATIONS[0][0], 1)
         self.assertIn("CREATE TABLE outbox", ST.MIGRATIONS[0][1])
 
@@ -92,6 +109,7 @@ class TestFreshV2(V2Case):
                                text='creator', source='dom', origin='unknown')
         self.storage.close()
         with sqlite3.connect(self.dir / ST.DB_FILENAME) as conn:
+            conn.execute('DROP TABLE event_revisions')
             conn.execute('ALTER TABLE events DROP COLUMN media_label')
             conn.execute('ALTER TABLE events DROP COLUMN evidence_json')
             conn.execute('DROP TABLE dom_observations')

@@ -91,6 +91,31 @@ class TestOpenAndPermissions(StorageCase):
 
 
 class TestIdentityS02S03(StorageCase):
+    def test_revision_scope_atomicity_and_reopen(self):
+        conversation = self.conversation()
+        target = self.storage.add_event(conversation_id=conversation, sender='contact', kind='text',
+            text='original', source='dom', origin='unknown', evidence={'reactions': ['❤️']})
+        other = self.conversation('200300400')
+        with self.assertRaises(ST.StorageError):
+            self.storage.revise_event(other, target, metadata={'edited': True}, text='wrong thread')
+        with self.assertRaises(ST.StorageError):
+            self.storage.revise_event(conversation, target, metadata={'reactions': [float('nan')]})
+        self.assertEqual(self.storage.event_revisions(target), [])
+        with self.assertRaises(RuntimeError):
+            with self.storage.transaction():
+                self.storage.revise_event(conversation, target, metadata={'edited': True}, text='rolled back')
+                raise RuntimeError('fictional partial failure')
+        self.assertEqual(self.storage.event_revisions(target), [])
+        self.assertEqual(self.storage.get_events(conversation)[0]['text'], 'original')
+        self.storage.revise_event(conversation, target, metadata={'edited': True}, text='corrected')
+        self.assertEqual(self.storage.get_events(conversation)[0]['text'], 'corrected')
+        self.assertEqual(self.storage.event_revisions(target)[0]['previous']['text'], 'original')
+        self.storage.close()
+        self.storage = ST.open_storage(self.dir)
+        self.addCleanup(self.storage.close)
+        self.assertEqual(self.storage.event_revisions(target)[0]['current']['text'], 'corrected')
+        self.assertEqual(self.storage.get_events(conversation)[0]['text'], 'corrected')
+
     def test_oversized_observation_and_invalid_batch_leave_no_partial_data(self):
         conversation = self.conversation()
         with self.assertRaises(ST.StorageError):

@@ -128,7 +128,9 @@ const messageRoots = pane => {
     const articles = [...pane.querySelectorAll('[role="article"]')]
         .filter(el => !el.parentElement?.closest('[role="article"]')
             && !hiddenTree(el, pane));
-    const rows = [...pane.querySelectorAll('[role="row"][aria-roledescription="message"]')]
+    const rows = [...pane.querySelectorAll('[role="row"]')]
+        .filter(el => el.getAttribute('aria-roledescription') === 'message'
+            || ['Message', 'Sent by you'].includes(el.getAttribute('aria-label')))
         .filter(el => !hiddenTree(el, pane));
     // Never union competing profiles or interpret ordinary table/inbox rows.
     if (articles.length) return {profile: rows.length ? 'mixed_unknown' : 'articles',
@@ -252,6 +254,9 @@ JS_RAW = r"""() => {
     const pane = layout.pane;
     OUT.pane_present = !!pane;
     if (pane) {
+        // Node continuity is page-local evidence, never a platform message ID.
+        const nodes = window.__shadowNodeEvidence ||= {
+            epoch: crypto.randomUUID(), keys: new WeakMap(), next: 0};
         const profile = layout;
         OUT.parser_profile = profile.profile;
         OUT.composer_ambiguous = layout.boxes.length > 1;
@@ -284,6 +289,7 @@ JS_RAW = r"""() => {
             OUT.header.profile_links++;
             if (a.querySelector('img')) OUT.header.avatars++;
         }
+        OUT.header.signature = layout.links.map(a => [a.getAttribute('href'), (a.innerText || '').trim()]);
 
         // Media: a card is a role=button wrapper, or a direct media link.
         const mediaOf = art => {
@@ -324,6 +330,7 @@ JS_RAW = r"""() => {
 
         for (const art of profile.roots) {
             const g = rect(art);
+            if (!nodes.keys.has(art)) nodes.keys.set(art, nodes.epoch + ':' + (++nodes.next));
             const labelNodes = (art.getAttribute('aria-labelledby') || '').split(/\s+/)
                 .map(id => document.getElementById(id)).filter(el => el && art.contains(el));
             const senderLabels = [art.getAttribute('aria-label') || '',
@@ -378,6 +385,7 @@ JS_RAW = r"""() => {
                 media_label: mediaOf(art),
                 reply_to_text: replyTo,
                 sender_candidates: senderCandidates,
+                node_key: nodes.keys.get(art),
                 // Exact separate UI marker, never a word in message/quote text.
                 edited: [...art.querySelectorAll('span, [role="status"]')].some(el =>
                     !el.closest('[dir="auto"], blockquote, [role="blockquote"]')
@@ -626,7 +634,10 @@ def read_coverage(result: ReadResult, requested_count: int | None = None) -> Rea
     }
     # Counts describe this returned window, not a previous collection step.
     coverage.update(requested_count=requested_count, collected_count=count,
-                    requested_count_reached=requested_count is not None and count >= requested_count,
+                    requested_count_reached=requested_count is not None and count >= requested_count
+                        and all(e.laid_out for e in result.events if e.kind in ('text', 'media', 'unknown')),
+                    collected_readable_count=sum(e.laid_out and e.kind in ('text', 'media', 'unknown')
+                                                 for e in result.events),
                     collection_stop=result.detail,
                     budget_exhausted=coverage['budget_exhausted'] or 'budget_exhausted' in result.detail,
                     ambiguous=coverage['ambiguous'] or result.detail == 'history_ambiguous',
@@ -641,7 +652,10 @@ def interpret_read(
     raw: dict, thread_id: str | None, navigations_used: int = 0,
     extra_detail: str = '',
 ) -> ReadResult:
-    return read_coverage(_interpret_read(raw, thread_id, navigations_used, extra_detail))
+    result = _interpret_read(raw, thread_id, navigations_used, extra_detail)
+    return read_coverage(replace(result, coverage={
+        'parser_profile': raw.get('parser_profile', 'unknown'),
+        'visual_edge': bool(raw.get('at_visual_start')), **result.coverage}))
 
 
 def _interpret_read(
@@ -743,6 +757,8 @@ def _interpret_read(
                 sender, basis = next(iter(explicit)), 'accessibility'
 
         evidence = {"order": order, "in_article": True, 'sender_basis': basis}
+        if art.get('node_key'):
+            evidence['node_key'] = art['node_key']
         if art.get("edited"):
             evidence["edited"] = True
         events.append(ObservedEvent(
