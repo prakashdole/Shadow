@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import json
 import os
+import statistics
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -28,11 +29,21 @@ JS_STRUCTURE = r"""() => {
     const geometry = el => {
         const r = el.getBoundingClientRect(), s = getComputedStyle(el);
         return {tag: el.tagName, role: el.getAttribute('role'),
+                id: el.id || null, hidden: el.hidden,
+                labelledBy: el.getAttribute('aria-labelledby'),
+                ariaHidden: el.getAttribute('aria-hidden'), direction: s.direction,
                 left: r.left, top: r.top, width: r.width, height: r.height,
                 scrollTop: el.scrollTop, scrollHeight: el.scrollHeight,
                 clientHeight: el.clientHeight, overflowY: s.overflowY,
                 display: s.display, flexDirection: s.flexDirection,
                 contentVisibility: s.contentVisibility};
+    };
+    const ancestry = el => {
+        const out = [];
+        for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
+            out.push(geometry(node));
+        }
+        return out;
     };
     return {
         rows: [...document.querySelectorAll('[aria-label="Thread list"] div[role="button"]')]
@@ -56,9 +67,7 @@ JS_STRUCTURE = r"""() => {
             geometry: geometry(el),
             markup: el.parentElement?.parentElement?.outerHTML,
             preceding: el.parentElement?.parentElement?.parentElement?.previousElementSibling?.outerHTML,
-            ancestors: [el.parentElement, el.parentElement?.parentElement,
-                        el.parentElement?.parentElement?.parentElement]
-                .filter(Boolean).map(geometry),
+            ancestors: ancestry(el),
             elements: [...el.querySelectorAll('a, img, video, svg, [role], [aria-label]')]
                 .map(n => ({tag: n.tagName, role: n.getAttribute('role'),
                     label: n.getAttribute('aria-label'), alt: n.getAttribute('alt'),
@@ -69,11 +78,11 @@ JS_STRUCTURE = r"""() => {
 }"""
 
 
-async def audit(profile, output_dir):
+async def audit(profile, output_dir, headless=False):
     output = private_destination(output_dir)
     output.mkdir(mode=0o700)
     os.chmod(output, 0o700)
-    browser = InstagramBrowser(profile_dir=profile)
+    browser = InstagramBrowser(profile_dir=profile, headless=headless)
     serial = 0
 
     async def capture():
@@ -82,6 +91,7 @@ async def audit(profile, output_dir):
         serial += 1
         stem = output / f"capture-{serial:03d}"
         shot = str(stem) + ".png"
+        before_shot = await browser.page.evaluate(JS_RAW)
         await browser.page.screenshot(path=shot)
         os.chmod(shot, 0o600)
         # Screenshot rendering can settle content-visibility virtualization.
@@ -89,7 +99,10 @@ async def audit(profile, output_dir):
         raw = await browser.page.evaluate(JS_RAW)
         thread = thread_id_from_url(browser.page.url)
         result = interpret_read(raw, thread) if thread else interpret_inbox(raw)
-        payload = {"raw": raw, "parsed": asdict(result), "screenshot": shot,
+        payload = {"before_screenshot": before_shot, "raw": raw,
+                   "parsed": asdict(result), "screenshot": shot,
+                   "browser_version": browser.page.context.browser.version,
+                   "headless": headless,
                    "structure": await browser.page.evaluate(JS_STRUCTURE)}
         descriptor = os.open(str(stem) + ".json", os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
@@ -142,7 +155,35 @@ async def audit(profile, output_dir):
                     result = await browser.read_thread(thread, want=want)
                     print(json.dumps({'history_status': result.status, 'detail': result.detail,
                                       'events': len(result.events), 'complete': result.complete,
+                                      'coverage': result.coverage,
                                       'elapsed_ms': round((asyncio.get_running_loop().time() - start) * 1000)}), flush=True)
+                elif action == 'benchmark':
+                    # Same page/viewport, no screenshot in the timed read loop.
+                    samples = []
+                    shapes = []
+                    for _ in range(30):
+                        start = asyncio.get_running_loop().time()
+                        raw = await browser.page.evaluate(JS_RAW)
+                        parsed = interpret_read(raw, thread_id_from_url(browser.page.url))
+                        samples.append((asyncio.get_running_loop().time() - start) * 1000)
+                        shapes.append([(e.sender, e.kind, e.text, e.media_label, e.reply_to_text)
+                                       for e in parsed.events])
+                    payload = {'samples_ms': samples, 'shapes': shapes, 'headless': headless,
+                               'browser_version': browser.page.context.browser.version,
+                               'viewport': browser.page.viewport_size}
+                    target = output / f'benchmark-{serial:03d}.json'
+                    descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                    with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
+                        json.dump(payload, stream, ensure_ascii=False)
+                    print(json.dumps({'benchmark': 'read_only', 'headless': headless,
+                        'median_ms': round(statistics.median(samples), 2),
+                        'p95_ms': round(sorted(samples)[int(len(samples) * .95) - 1], 2),
+                        'stable': all(shape == shapes[0] for shape in shapes),
+                        'events': len(shapes[0])}), flush=True)
+                elif action == 'reload':
+                    browser._assert_on_site()
+                    await browser.page.reload(wait_until='domcontentloaded')
+                    await browser._wait_readable(thread=bool(thread_id_from_url(browser.page.url)))
                 elif action != "capture":
                     raise ValueError("Unsupported diagnostic action")
                 await capture()
@@ -156,8 +197,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument('--headless', action='store_true')
     args = parser.parse_args()
-    asyncio.run(audit(args.profile, args.output_dir))
+    asyncio.run(audit(args.profile, args.output_dir, args.headless))
 
 
 if __name__ == "__main__":

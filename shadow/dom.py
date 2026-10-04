@@ -117,11 +117,19 @@ JS_FIND_PANE = r"""const findMessagePane = () => {
     return pane;
 };"""
 
-JS_MESSAGE_ROOTS = r"""const messageRoots = pane => {
+JS_MESSAGE_ROOTS = r"""const hiddenTree = (root, pane) => {
+    for (let node = root; node && node !== pane; node = node.parentElement) {
+        if (node.hidden || node.getAttribute('aria-hidden') === 'true'
+                || getComputedStyle(node).display === 'none') return true;
+    }
+    return false;
+};
+const messageRoots = pane => {
     const articles = [...pane.querySelectorAll('[role="article"]')]
         .filter(el => !el.parentElement?.closest('[role="article"]')
-            && !el.closest('[aria-hidden="true"], [hidden]'));
-    const rows = [...pane.querySelectorAll('[role="row"][aria-roledescription="message"]')];
+            && !hiddenTree(el, pane));
+    const rows = [...pane.querySelectorAll('[role="row"][aria-roledescription="message"]')]
+        .filter(el => !hiddenTree(el, pane));
     // Never union competing profiles or interpret ordinary table/inbox rows.
     if (articles.length) return {profile: rows.length ? 'mixed_unknown' : 'articles',
                                   roots: rows.length ? [] : articles};
@@ -222,7 +230,7 @@ JS_RAW = r"""() => {
         OUT.parser_profile = profile.profile;
         const roots = new Set(profile.roots);
         const rootSelector = profile.profile === 'semantic_rows' ? '[role="row"]' : '[role="article"]';
-        const inMessage = el => roots.has(el.closest(rootSelector));
+        const inMessage = el => !!el.closest(rootSelector);
         OUT.geometry_sender_verified = profile.profile === 'articles'
             && getComputedStyle(pane).direction === 'ltr';
         const pr = pane.getBoundingClientRect();
@@ -310,6 +318,7 @@ JS_RAW = r"""() => {
                 if (!quote || quote.querySelector(rootSelector)) continue;
                 const marker = quote.previousElementSibling;
                 if (!marker || marker.querySelector(rootSelector)) continue;
+                if (hiddenTree(quote, pane) || hiddenTree(marker, pane)) continue;
                 const markerText = (marker.innerText || '').replace(/\s+/g, ' ').trim();
                 if (!/^(?:.{1,100} replied to (?:you|yourself)|you replied to .{1,100})(?: · \d+[smhdw])?$/i.test(markerText)) continue;
                 const label = mediaOf(quote);
@@ -348,6 +357,7 @@ JS_RAW = r"""() => {
         let order = 0;
         const items = [];
         for (const el of pane.querySelectorAll('[role="article"], [role="row"], [dir="auto"], [role="button"]')) {
+            if (hiddenTree(el, pane)) continue;
             if (roots.has(el)) { items.push({order: order++, article: true, node: el}); continue; }
             if (inMessage(el)) continue;
             if ([...quoteNodes].some(q => q.contains(el))) continue;

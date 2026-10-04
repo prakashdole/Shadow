@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import json
 import re
 import os
 from dataclasses import replace
@@ -126,7 +127,7 @@ _JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, 
             if (done) return;
             clearTimeout(timer);
             const raw = read(), now = performance.now(), sig = signature(raw);
-            if (scroll && window.__shadowHistoryGuard?.interrupted) {
+            if (window.__shadowHistoryGuard?.interrupted) {
                 finish(raw, 'owner_interrupted'); return;
             }
             if (scroll && (findMessagePane() !== pane || !pane.isConnected)) {
@@ -180,21 +181,43 @@ _JS_HISTORY_BEGIN = r"""() => {
     return true;
 }"""
 
-_JS_HISTORY_END = r"""() => {
+_JS_HISTORY_END = r"""async ([source, budget, quiet, sample, anchors]) => {
 """ + JS_FIND_PANE + r"""
     const guard = window.__shadowHistoryGuard;
     if (!guard) return {restored: false, reason: 'guard_missing'};
-    for (const type of guard.types) document.removeEventListener(type, guard.onInput, true);
-    delete window.__shadowHistoryGuard;
-    if (guard.interrupted) return {restored: false, reason: 'owner_interrupted'};
-    if (location.pathname !== guard.path || findMessagePane() !== guard.pane
-            || !guard.pane.isConnected) return {restored: false, reason: 'view_replaced'};
-    const pane = guard.pane;
-    const reversed = getComputedStyle(pane).flexDirection === 'column-reverse';
-    const target = guard.top + (reversed ? 0 : pane.scrollHeight - guard.extent);
-    pane.scrollTo({top: target, behavior: 'instant'});
-    return {restored: Math.abs(pane.scrollTop - target) <= 2,
-            reason: 'scroll_position_only'};
+    try {
+        if (guard.interrupted) return {restored: false, reason: 'owner_interrupted'};
+        if (location.pathname !== guard.path || findMessagePane() !== guard.pane
+                || !guard.pane.isConnected) return {restored: false, reason: 'view_replaced'};
+        const pane = guard.pane;
+        const reversed = getComputedStyle(pane).flexDirection === 'column-reverse';
+        const target = guard.top + (reversed ? 0 : pane.scrollHeight - guard.extent);
+        pane.scrollTo({top: target, behavior: 'instant'});
+        const read = eval('(' + source + ')');
+        const deadline = performance.now() + budget;
+        let previous = null, since = performance.now();
+        do {
+            if (guard.interrupted) return {restored: false, reason: 'owner_interrupted'};
+            if (location.pathname !== guard.path || findMessagePane() !== pane || !pane.isConnected)
+                return {restored: false, reason: 'view_replaced'};
+            const raw = read();
+            if (raw.seen) return {restored: false, reason: 'receipts_visible'};
+            const laid = raw.articles.filter(a => a.laid);
+            const signature = JSON.stringify(laid.map(a => [a.text, a.media_label, a.reply_to_text]));
+            const keys = laid.map(a => JSON.stringify([a.text, a.media_label, a.reply_to_text]));
+            const restoredAnchors = keys.some((_, i) => anchors.every((key, j) => key === keys[i + j]));
+            if (signature !== previous || !restoredAnchors || raw.loading) since = performance.now();
+            previous = signature;
+            if (restoredAnchors && !raw.loading && performance.now() - since >= quiet)
+                return {restored: Math.abs(pane.scrollTop - target) <= 2,
+                        reason: 'rendered_content', raw};
+            await new Promise(resolve => setTimeout(resolve, sample));
+        } while (performance.now() < deadline);
+        return {restored: false, reason: 'content_unsettled'};
+    } finally {
+        for (const type of guard.types) document.removeEventListener(type, guard.onInput, true);
+        delete window.__shadowHistoryGuard;
+    }
 }"""
 
 # The nav profile link, if the header rendered one. Returned to Python only to
@@ -589,7 +612,7 @@ class InstagramBrowser:
         return interpret_read(raw,
                               thread_id_from_url(self.page.url or ""), 1)
 
-    async def read_thread(self, thread_id: str, want: int = 0) -> ReadResult:
+    async def read_thread(self, thread_id: str, want: int = 0, *, anchor: tuple = ()) -> ReadResult:
         assert self.page
         failed = await self._check_account()
         if failed:
@@ -619,7 +642,7 @@ class InstagramBrowser:
                 return ReadResult(status="dom_unknown", thread_id=thread_id,
                                   navigations_used=navigations, detail="thread_did_not_settle")
             raw = await self.page.evaluate(JS_RAW)
-        result = (await self._load_history(want) if want > 0
+        result = (await self._load_history(want, anchor=anchor) if want > 0
                   else interpret_read(raw, thread_id))
         failed = await self._check_account()
         if failed:
@@ -632,32 +655,64 @@ class InstagramBrowser:
         return replace(result, navigations_used=navigations,
                        detail=result.detail or self._detail())
 
-    async def _load_history(self, want: int) -> ReadResult:
+    async def _load_history(self, want: int, *, anchor: tuple = ()) -> ReadResult:
         assert self.page
         initial = await self.page.evaluate(JS_RAW)
         if initial.get('composer_text'):
             return replace(interpret_read(initial, thread_id_from_url(initial.get('path'))),
                            status='dom_unknown', detail='history_manual_text')
+        immediate = interpret_read(initial, thread_id_from_url(initial.get('path')))
+        if any(not e.laid_out for e in immediate.events):
+            return replace(immediate, status='dom_unknown', complete=False, detail='history_unlaid_messages')
+        if (immediate.status == 'ok' and all(e.laid_out for e in immediate.events)
+                and sum(e.kind in ('text', 'media', 'unknown') for e in immediate.events) >= want):
+            return replace(immediate, detail='history_count_reached', coverage={**immediate.coverage,
+                'requested_count': want, 'collected_count': len(immediate.events),
+                'scroll_position_restored': True, 'view_content_restored': True,
+                'restoration_reason': 'no_scroll_required'})
         if not await self.page.evaluate(_JS_HISTORY_BEGIN):
             return ReadResult('dom_unknown', detail='history_guard_unavailable')
         try:
-            result = await self._collect_history(want)
+            result = await self._collect_history(want, anchor=anchor)
         finally:
-            restoration = await self.page.evaluate(_JS_HISTORY_END)
+            restoration = await self.page.evaluate(_JS_HISTORY_END, [JS_RAW,
+                self.settings.history_step_timeout_ms, self.settings.dom_settle_ms,
+                self.settings.dom_sample_ms,
+                [json.dumps([a.get('text'), a.get('media_label'), a.get('reply_to_text')],
+                            ensure_ascii=False, separators=(',', ':'))
+                 for a in initial.get('articles', []) if a.get('laid')]])
+        from shadow import alignment
+        anchors = alignment.keys_of([e for e in alignment.sequence_events(interpret_read(
+            initial, thread_id_from_url(initial.get('path'))).events) if e.laid_out])
+        restored_events = interpret_read(restoration.get('raw', {}),
+                                        thread_id_from_url(initial.get('path'))).events
+        visible = alignment.keys_of([e for e in alignment.sequence_events(restored_events) if e.laid_out])
+        content_restored = bool(anchors) and any(visible[i:i + len(anchors)] == anchors
+                                                for i in range(len(visible) - len(anchors) + 1))
         coverage = {**result.coverage, 'requested_count': want,
                     'collected_count': sum(e.kind in ('text', 'media', 'unknown') for e in result.events),
+                    'collection_stop': result.detail,
+                    'budget_exhausted': 'budget_exhausted' in result.detail,
+                    'ambiguous': result.detail == 'history_ambiguous',
+                    'owner_interrupted': restoration['reason'] == 'owner_interrupted',
+                    'stored_anchor': result.detail == 'history_stored_anchor',
+                    'restored_rendered_count': len(visible),
                     'scroll_position_restored': restoration['restored'],
-                    'view_content_restored': False,
+                    'view_content_restored': content_restored,
                     'restoration_reason': restoration['reason']}
+        if result.status in ('login_required', 'challenge', 'receipts_visible', 'wrong_account', 'wrong_thread'):
+            return replace(result, coverage=coverage)
         if restoration['reason'] in ('owner_interrupted', 'view_replaced'):
             return replace(result, status='dom_unknown', complete=False,
                            detail='history_' + restoration['reason'], coverage=coverage)
-        if not restoration['restored']:
+        if restoration['reason'] == 'receipts_visible':
+            return replace(result, status='receipts_visible', coverage=coverage)
+        if not restoration['restored'] or not content_restored:
             return replace(result, status='dom_unknown', complete=False,
-                           detail='history_scroll_restore_failed', coverage=coverage)
+                           detail='history_view_restore_failed', coverage=coverage)
         return replace(result, coverage=coverage)
 
-    async def _collect_history(self, want: int) -> ReadResult:
+    async def _collect_history(self, want: int, *, anchor: tuple = ()) -> ReadResult:
         """Collect bounded overlapping windows, oldest first, without navigation.
 
         No content hash deduplication, guessed overlap or silent unmatched page.
@@ -677,6 +732,8 @@ class InstagramBrowser:
         for _ in range(self.settings.history_max_steps):
             if result.status != 'ok':
                 return result
+            if anchor and alignment.align(anchor, alignment.keys_of(events)).status == 'ok':
+                return replace(result, events=tuple(events), detail='history_stored_anchor')
             if sum(e.kind in ('text', 'media', 'unknown') for e in events) >= want:
                 return replace(result, events=tuple(events), detail='history_count_reached')
             remaining = int((deadline - asyncio.get_running_loop().time()) * 1000)
@@ -695,6 +752,9 @@ class InstagramBrowser:
                 return ReadResult('dom_unknown', detail='history_' + settled['reason'])
             older = interpret_read(settled['raw'], thread_id)
             older = replace(older, events=tuple(alignment.sequence_events(older.events)))
+            if any(not e.laid_out for e in older.events):
+                return replace(result, status='dom_unknown', events=tuple(events), complete=False,
+                               detail='history_unlaid_messages')
             if older.status != 'ok':
                 return older
             if settled['reason'] != 'settled':

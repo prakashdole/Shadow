@@ -127,7 +127,7 @@ class FakeBrowser:
         self.opened.append(inbox_row)
         return self._read_for(inbox_row.row_index)
 
-    async def read_thread(self, thread_id: str, want: int = 0) -> C.ReadResult:
+    async def read_thread(self, thread_id: str, want: int = 0, *, anchor: tuple = ()) -> C.ReadResult:
         self.calls.append(f"read_thread:{thread_id}")
         if want:
             self.history_requests.append((thread_id, want))

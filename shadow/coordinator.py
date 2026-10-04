@@ -522,7 +522,8 @@ class Coordinator:
             # One bounded read, on the current thread only. Re-enter all read
             # guards after awaiting; recovery is not permission to bypass them.
             recovered = await self.browser.read_thread(conversation["thread_id"],
-                                                       want=self.settings.align_tail_events)
+                want=self.settings.align_tail_events,
+                anchor=tuple(A.keys_of(stored[-self.settings.align_tail_events:])))
             if recovered.status in GLOBAL_PAUSE_STATUSES:
                 self._global_pause(recovered.status)
                 report.stopped_reason = recovered.status

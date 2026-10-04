@@ -525,6 +525,67 @@ class B03KindsTest(BrowserCase):
 
 
 class B04CompletenessTest(BrowserCase):
+    async def test_unique_stored_anchor_stops_recovery_before_large_count(self):
+        from shadow.instagram import InstagramBrowser
+        from shadow.alignment import keys_of
+        await self.open_fixture('thread_long.html')
+        initial = await self.read()
+        before = await self.page.evaluate("document.querySelector('.pane').scrollTop")
+        adapter = InstagramBrowser(); adapter.page = self.page
+        result = await adapter._load_history(100, anchor=tuple(keys_of(initial.events)))
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(result.detail, 'history_stored_anchor')
+        self.assertTrue(result.coverage['stored_anchor'])
+        self.assertEqual(await self.page.evaluate("document.querySelector('.pane').scrollTop"), before)
+
+    async def test_hidden_history_tree_is_excluded_without_forcing_render(self):
+        await self.open_fixture('thread_1to1.html')
+        before = await self.read()
+        await self.page.evaluate("""() => {
+            const hidden = document.createElement('div'); hidden.style.display = 'none';
+            hidden.innerHTML = '<div role="article"><span dir="auto">hidden historical duplicate</span></div>';
+            hidden.innerHTML += '<span dir="auto">hidden notice</span>';
+            hidden.innerHTML += '<span dir="auto">Test Contact replied to you</span><span dir="auto">hidden quote</span>';
+            document.querySelector('.pane').prepend(hidden);
+        }""")
+        after = await self.read()
+        self.assertEqual(after.events, before.events)
+
+    async def test_unrestorable_history_preserves_collected_events_but_holds(self):
+        from shadow.instagram import InstagramBrowser
+        from shadow.settings import Settings
+        from unittest.mock import patch
+        await self.open_fixture('thread_long.html')
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            pane.addEventListener('scroll', () => {
+                pane.lastElementChild.remove();
+                pane.insertAdjacentHTML('afterbegin', '<div role="article"><span dir="auto">older</span></div>');
+            }, {once:true});
+        }""")
+        adapter = InstagramBrowser(settings=Settings(history_step_timeout_ms=400)); adapter.page = self.page
+        with patch.object(adapter, '_assert_on_site'):
+            result = await adapter._load_history(100)
+        self.assertEqual(result.status, 'dom_unknown')
+        self.assertFalse(result.coverage['view_content_restored'])
+        self.assertTrue(await self.page.evaluate('window.__shadowHistoryGuard === undefined'))
+
+    async def test_new_history_window_with_zero_geometry_holds(self):
+        from shadow.instagram import InstagramBrowser
+        from unittest.mock import patch
+        await self.open_fixture('thread_long.html')
+        await self.page.evaluate("""() => {
+            const pane = document.querySelector('.pane');
+            pane.addEventListener('scroll', () => {
+                pane.querySelector('[role=article]').style.transform = 'scale(0)';
+            }, {once:true});
+        }""")
+        adapter = InstagramBrowser(); adapter.page = self.page
+        with patch.object(adapter, '_assert_on_site'):
+            result = await adapter._load_history(100)
+        self.assertEqual(result.status, 'dom_unknown')
+        self.assertFalse(result.complete)
+
     async def test_history_owner_input_interrupts_without_restoring_over_owner(self):
         from shadow.instagram import InstagramBrowser
         from unittest.mock import patch
@@ -660,9 +721,14 @@ class B04CompletenessTest(BrowserCase):
                 + texts.map(text => '<div role="article"><span dir="auto">' + text + '</span></div>').join('')
                 + '<div style="height:1200px"></div>';
             pane.innerHTML = markup(['a', 'b', 'c']); pane.scrollTop = pane.scrollHeight;
+            const originalTop = pane.scrollTop;
             let loaded = false;
             setTimeout(() => pane.addEventListener('scroll', () => {
-                if (loaded) return; loaded = true; pane.setAttribute('aria-busy', 'true');
+                if (loaded) {
+                    if (Math.abs(pane.scrollTop - originalTop) < 5) pane.innerHTML = markup(['a', 'b', 'c']);
+                    return;
+                }
+                loaded = true; pane.setAttribute('aria-busy', 'true');
                 setTimeout(() => {
                     pane.innerHTML = markup(['older', 'a', 'b']); pane.removeAttribute('aria-busy');
                 }, 250);
@@ -721,7 +787,7 @@ class B04CompletenessTest(BrowserCase):
         from shadow.instagram import InstagramBrowser
 
         await self.open_fixture('thread_1to1.html')
-        await self.page.evaluate("document.querySelector('[role=article]').style.display = 'none'")
+        await self.page.evaluate("document.querySelector('[role=article]').style.transform = 'scale(0)'")
         adapter = InstagramBrowser(); adapter.page = self.page
         result = await adapter._load_history(1)
         self.assertEqual(result.status, 'dom_unknown')
