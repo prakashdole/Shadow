@@ -502,6 +502,17 @@ class Coordinator:
                       *, recover: bool = True) -> None:
         stored = self.storage.get_events(conversation_id)
         conversation = self.storage.get_conversation(conversation_id)
+        try:
+            self.storage.record_dom_observation(conversation_id,
+                {'status': result.status, 'coverage': result.coverage,
+                 'events': [asdict(event) for event in result.events],
+                 'relationships': 'window_local_unresolved'},
+                limit=self.settings.dom_observation_limit, byte_limit=self.settings.dom_observation_bytes)
+        except ST.StorageError:
+            self._hold(conversation_id, "observation_budget", report, tier="action")
+            return
+        result = replace(result, events=tuple(A.sequence_events(result.events)))
+        stored = A.sequence_events(stored)
         window = A.keys_of(result.events)
         if not conversation["first_seen_baseline_done"]:
             self._record_baseline(conversation_id, result, report)
@@ -586,6 +597,7 @@ class Coordinator:
         decides. Everything else stays `unknown`, which is the lesson of D33.
         """
         confirmed = self._confirmed_texts(conversation_id)
+        batch = []
         for event in events:
             # A contact message is the contact's, with no claim about the owner.
             # An owner message is only ours if it matches a confirmed send.
@@ -596,7 +608,7 @@ class Coordinator:
                     if A.normalize_text(event.text) in confirmed
                     else "owner_authored"
                 )
-            self.storage.add_event(
+            batch.append(dict(
                 conversation_id=conversation_id,
                 sender=event.sender,
                 kind=event.kind,
@@ -605,10 +617,13 @@ class Coordinator:
                 platform_ts=None,
                 reply_to=event.reply_to_text,
                 media_label=event.media_label,
+                evidence={**event.evidence, 'laid_out': event.laid_out,
+                          'window_position': event.position},
                 source="dom",
                 origin=origin,
                 seq=None,
-            )
+            ))
+        self.storage.add_events(batch)
 
     def _confirmed_texts(self, conversation_id: int) -> set[str]:
         return {
@@ -1109,7 +1124,8 @@ class Coordinator:
         if result.is_group is not False:
             self._hold(conversation_id, "group" if result.is_group else "group_uncertain", report, tier="action")
             return False
-        stored = self.storage.get_events(conversation_id)
+        stored = A.sequence_events(self.storage.get_events(conversation_id))
+        result = replace(result, events=tuple(A.sequence_events(result.events)))
         result_align = A.align(A.keys_of(stored[-self.settings.align_tail_events:]), A.keys_of(result.events))
         if result_align.status == "ok" and result_align.new_start_index < len(result.events):
             # The contact said something after the draft was formed. The draft is

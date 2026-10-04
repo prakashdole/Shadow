@@ -95,6 +95,16 @@ def keys_of(events: Iterable) -> list[Key]:
     return out
 
 
+def sequence_events(events: Iterable) -> list:
+    """Reaction badges are mutable observation metadata, not sequence anchors.
+
+    Keep legacy reaction rows intact in storage, but omit them on both sides of
+    matching so badge removal cannot manufacture a gap or new message.
+    """
+    return [e for e in events if (e.get('kind') if isinstance(e, dict)
+                                  else getattr(e, 'kind', None)) != 'reaction']
+
+
 @dataclass(frozen=True)
 class AlignResult:
     """Where the window stops being known history.

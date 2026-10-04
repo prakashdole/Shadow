@@ -155,6 +155,20 @@ class TestAccountBinding(CoordinatorCase):
 
 
 class TestBaselineAndOverlap(CoordinatorCase):
+    async def test_reaction_change_is_observation_not_new_sequence_or_reply_work(self) -> None:
+        conversation = self.conversation()
+        self.seed_history(conversation, "contact", "anchor")
+        self.seed_history(conversation, "owner", "answer")
+        self.inbox(row(0))
+        self.script_reads(THREAD_A, event(0, "contact", "anchor"),
+                          event(1, "owner", "answer"), event(2, "unknown", "❤️", "reaction"))
+        report = await self.coordinator.tick_discover()
+        self.assertEqual(report.ingested, 0)
+        self.assertEqual([e['kind'] for e in self.storage.get_events(conversation)], ['text', 'text'])
+        self.assertEqual(self.decisions.calls, [])
+        self.assertEqual(self.browser.history_requests, [])
+        self.assertEqual(len(self.storage.dom_observations(conversation)), 1)
+
     async def test_gap_recovers_once_and_does_not_ingest_recovered_older_context(self) -> None:
         conversation = self.conversation()
         self.seed_history(conversation, "contact", "anchor")

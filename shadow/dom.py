@@ -23,6 +23,7 @@ No Playwright import. The rules come from tests/fixtures/dom/FINDINGS.md:
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 import unicodedata
 
 from shadow.contracts import (
@@ -313,6 +314,7 @@ JS_RAW = r"""() => {
                 if (!/^(?:.{1,100} replied to (?:you|yourself)|you replied to .{1,100})(?: · \d+[smhdw])?$/i.test(markerText)) continue;
                 const label = mediaOf(quote);
                 const text = leavesOf(quote).map(textOf).filter(Boolean).join(' ');
+                if (/reacted to (?:your|a) message|^this message was unsent$/i.test(text)) continue;
                 replyTo = label ? '[quoted ' + label + ']' : text || null;
                 if (replyTo) quoteNodes.add(quote);
             }
@@ -682,6 +684,17 @@ def interpret_read(
                 text=text, laid_out=bool(leaf["laid"]),
                 evidence={"source": "outside_article", "order": gap_order},
             ))
+
+    # Reobserved bound badges stay with their raw-window target. The badge
+    # event remains available to diagnostics; sequence matching ignores it.
+    badges: dict[int, list[str]] = {}
+    for event in events:
+        target = event.evidence.get('target_order')
+        if event.kind == 'reaction' and type(target) is int:
+            badges.setdefault(target, []).append(event.text)
+    events = [replace(event, evidence={**event.evidence,
+              'reactions': badges.get(event.evidence.get('order'), [])})
+              if event.evidence.get('in_article') else event for event in events]
 
     return ReadResult(
         status="ok",

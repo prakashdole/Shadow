@@ -91,6 +91,36 @@ class TestOpenAndPermissions(StorageCase):
 
 
 class TestIdentityS02S03(StorageCase):
+    def test_oversized_observation_and_invalid_batch_leave_no_partial_data(self):
+        conversation = self.conversation()
+        with self.assertRaises(ST.StorageError):
+            self.storage.record_dom_observation(conversation, {'text': 'x' * 100}, limit=2, byte_limit=10)
+        self.assertEqual(self.storage.dom_observations(conversation), [])
+        fields = dict(conversation_id=conversation, sender='contact', kind='text',
+                      text='same', source='dom', origin='unknown')
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.storage.add_events([fields, dict(fields, sender='invalid')])
+        self.assertEqual(self.storage.get_events(conversation), [])
+
+    def test_dom_observations_are_bounded_immutable_and_survive_reopen(self):
+        conversation = self.conversation()
+        self.storage.record_dom_observation(conversation, {"events": ["same", "same"],
+                                                          "coverage": {"server_complete": False}}, limit=2, byte_limit=1000)
+        self.storage.record_dom_observation(conversation, {"events": ["same"], "edited": True}, limit=2, byte_limit=1000)
+        self.storage.record_dom_observation(conversation, {"events": [], "status": "dom_unknown"}, limit=2, byte_limit=1000)
+        rows = self.storage.dom_observations(conversation)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]['payload']['events'], ['same'])
+        self.assertEqual(self.storage.get_events(conversation), [])  # absence is never deletion
+        self.storage.close()
+        self.storage = ST.open_storage(self.dir)
+        self.addCleanup(self.storage.close)
+        self.assertEqual(self.storage.dom_observations(conversation), rows)
+        # Public storage API offers append/prune, no evidence update operation.
+        self.assertEqual(self.storage.record_dom_observation(conversation,
+            {"events": [], "status": "dom_unknown"}, limit=2, byte_limit=1000), 0)
+        self.assertEqual(self.storage.dom_observations(conversation), rows)
+
     def test_same_text_twice_at_different_positions_is_two_events(self) -> None:
         conversation = self.conversation()
         for seq in (1, 2):

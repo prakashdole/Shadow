@@ -33,6 +33,7 @@ This table is the only place numeric defaults are defined. Other plan documents,
 | `dom_settle_ms` / `dom_sample_ms` | 150 / 75 ms | Rendered-content quiet period and in-page geometry sampling. The settled steady-state read adds no wait. |
 | `history_max_steps` / `history_step_timeout_ms` | 24 / 2,000 ms | Sequential overlapping scroll step and per-step wait ceilings, also bounded by `dom_read_timeout_ms`. No progress, ambiguity or a visual edge never proves complete server history. |
 | `align_tail_events` | 200 events | Stored alignment tail and requested depth for one bounded discovery recovery. Recovery never bypasses manual, identity, group, owner or pause holds; pre-send rereads do not scroll-recover. |
+| `dom_observation_limit` / `dom_observation_bytes` | 32 / 262,144 bytes | Changed private DOM evidence snapshots retained per conversation and maximum encoded bytes per snapshot. Exact unchanged snapshots add no row. Retention prunes evidence, never canonical messages. Oversized evidence holds instead of silently truncating. |
 | `inbox_check_interval` | 60 s | In-page read of the rendered thread list; navigates only if the list is not rendered. |
 | `quiet_poll_interval` | 5 min | Inbox check outside `active_hours` (urgent detection only). |
 | `idle_backoff_max` | 5 min | Error/idle backoff ceiling within active hours. |
@@ -71,6 +72,11 @@ An owner-authored outbound event not produced by Shadow's outbox (owner replied 
 Use dataclasses plus explicit validation initially; no new validation framework required.
 
 - `ConversationRef`: local account ID, exact platform thread ID, observed participant identifiers if available, display label, binding status/evidence. Display label is presentation, never a primary key.
+- `ReadResult.coverage`: observed count, parser profile, visual edge, requested depth,
+  collection/restoration facts; never implicit server completeness (D45).
+- Private `dom_observations`: bounded changed snapshots retaining window-local
+  metadata and unresolved relationships; never model context or inferred deletes
+  (D47). Initial event evidence is preserved separately from canonical content.
 - `ObservedEvent`: local event ID, thread ID, sender (`owner|contact|unknown`), kind (`text|media|reaction|system|unknown`), text, observed UTC time, platform timestamp/ID when exposed, reply target when observed, source (`import|dom|confirmed_send`), confidence/evidence, sequence position, origin (`owner_authored|shadow_generated|unknown`).
 - `ReadResult`: `ok|empty_verified|login_required|challenge|dom_unknown|wrong_thread|ambiguous_identity`, events, observed thread/account binding, completeness flag, pane revision. Empty list alone is not a status.
 - `RiskAssessment`: schema version; `risk=none|money|commitment|distress|privacy|unsupported|uncertain`; `reason_code`; `action_hint=proceed|hold|urgent`; `signals` (subset of `confusion`, `automation_question`, `owner_needed`); evidence event IDs. Produced by the risk role for every new inbound batch. Deterministic cues are computed separately and may raise priority to `urgent` or `hold`, never lower it.

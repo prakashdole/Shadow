@@ -634,6 +634,10 @@ class InstagramBrowser:
 
     async def _load_history(self, want: int) -> ReadResult:
         assert self.page
+        initial = await self.page.evaluate(JS_RAW)
+        if initial.get('composer_text'):
+            return replace(interpret_read(initial, thread_id_from_url(initial.get('path'))),
+                           status='dom_unknown', detail='history_manual_text')
         if not await self.page.evaluate(_JS_HISTORY_BEGIN):
             return ReadResult('dom_unknown', detail='history_guard_unavailable')
         try:
@@ -648,6 +652,9 @@ class InstagramBrowser:
         if restoration['reason'] in ('owner_interrupted', 'view_replaced'):
             return replace(result, status='dom_unknown', complete=False,
                            detail='history_' + restoration['reason'], coverage=coverage)
+        if not restoration['restored']:
+            return replace(result, status='dom_unknown', complete=False,
+                           detail='history_scroll_restore_failed', coverage=coverage)
         return replace(result, coverage=coverage)
 
     async def _collect_history(self, want: int) -> ReadResult:
@@ -662,6 +669,7 @@ class InstagramBrowser:
         path = raw.get('path')
         thread_id = thread_id_from_url(path)
         result = interpret_read(raw, thread_id)
+        result = replace(result, events=tuple(alignment.sequence_events(result.events)))
         if any(not e.laid_out for e in result.events):
             return replace(result, status='dom_unknown', complete=False, detail='history_unlaid_messages')
         events = list(result.events)
@@ -686,6 +694,7 @@ class InstagramBrowser:
             if settled['reason'] in ('owner_interrupted', 'pane_replaced'):
                 return ReadResult('dom_unknown', detail='history_' + settled['reason'])
             older = interpret_read(settled['raw'], thread_id)
+            older = replace(older, events=tuple(alignment.sequence_events(older.events)))
             if older.status != 'ok':
                 return older
             if settled['reason'] != 'settled':

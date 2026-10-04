@@ -364,6 +364,7 @@ class B03KindsTest(BrowserCase):
         badge = next(event for event in result.events if event.text == '👍')
         self.assertEqual((badge.kind, badge.sender), ('reaction', 'unknown'))
         self.assertEqual(badge.evidence['target_order'], result.events[0].evidence['order'])
+        self.assertEqual(result.events[0].evidence['reactions'], ['👍'])
 
     async def test_live_unavailable_card_is_media_but_typed_notice_is_text(self):
         await self.open_fixture('thread_1to1.html')

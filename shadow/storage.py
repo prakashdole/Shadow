@@ -21,6 +21,7 @@ machine", [rules.md] 13-18):
 from __future__ import annotations
 
 import os
+import json
 import sqlite3
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
@@ -405,9 +406,20 @@ SCHEMA_V9 = """
 ALTER TABLE events ADD COLUMN media_label TEXT;
 """
 
+SCHEMA_V10 = """
+ALTER TABLE events ADD COLUMN evidence_json TEXT;
+CREATE TABLE dom_observations (
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    observed_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+CREATE INDEX dom_observations_thread ON dom_observations(conversation_id, id);
+"""
+
 MIGRATIONS: tuple[tuple, ...] = (
     (1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3), (4, SCHEMA_V4), (5, SCHEMA_V5),
-    (6, SCHEMA_V6), (7, SCHEMA_V7), (8, SCHEMA_V8), (9, SCHEMA_V9),
+    (6, SCHEMA_V6), (7, SCHEMA_V7), (8, SCHEMA_V8), (9, SCHEMA_V9), (10, SCHEMA_V10),
 )
 CURRENT_VERSION = MIGRATIONS[-1][0]
 
@@ -926,6 +938,7 @@ class Storage:
         platform_msg_id: str | None = None,
         reply_to: str | None = None,
         media_label: str | None = None,
+        evidence: dict | None = None,
         source: str,
         origin: str,
         seq: int | None = None,
@@ -954,12 +967,13 @@ class Storage:
             seq if seq is not None else self._next_seq(conn, conversation_id, legacy_contact_id),
             import_key,
             media_label,
+            json.dumps(evidence, ensure_ascii=False, allow_nan=False) if evidence is not None else None,
         )
         verb = "INSERT OR IGNORE" if ignore_conflict else "INSERT"
         cursor = conn.execute(
             f"{verb} INTO events (conversation_id, legacy_contact_id, sender, kind, text, "
             "observed_at, platform_ts, platform_msg_id, reply_to, source, origin, seq, "
-            "import_key, media_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "import_key, media_label, evidence_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             values,
         )
         if ignore_conflict and cursor.rowcount == 0:
@@ -985,11 +999,47 @@ class Storage:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def add_events(self, events: list[dict]) -> list[int]:
+        """One aligned window is atomic; a failed item cannot leave its prefix."""
+        with self.transaction() as conn:
+            return [self._insert_event(conn, **fields) for fields in events]
+
     def get_legacy_events(self, legacy_id: int) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM events WHERE legacy_contact_id = ? ORDER BY seq", (legacy_id,)
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def record_dom_observation(self, conversation_id: int, payload: dict, *,
+                               limit: int, byte_limit: int) -> int:
+        """Retain changed read evidence; never reconcile missing nodes as deletes.
+
+        Evidence is local/private and is not automatically exposed to model
+        context. Window orders and candidate identifiers remain unresolved.
+        """
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, allow_nan=False)
+        if type(limit) is not int or limit <= 0 or type(byte_limit) is not int or byte_limit <= 0:
+            raise StorageError('Invalid observation retention limit')
+        if len(encoded.encode('utf-8')) > byte_limit:
+            raise StorageError('DOM observation exceeds evidence budget')
+        with self.transaction() as conn:
+            previous = conn.execute('SELECT payload_json FROM dom_observations '
+                                    'WHERE conversation_id = ? ORDER BY id DESC LIMIT 1',
+                                    (conversation_id,)).fetchone()
+            if previous and previous[0] == encoded:
+                return 0
+            cursor = conn.execute('INSERT INTO dom_observations '
+                                  '(conversation_id, observed_at, payload_json) VALUES (?, ?, ?)',
+                                  (conversation_id, utcnow(), encoded))
+            conn.execute('DELETE FROM dom_observations WHERE conversation_id = ? AND id NOT IN '
+                         '(SELECT id FROM dom_observations WHERE conversation_id = ? '
+                         'ORDER BY id DESC LIMIT ?)', (conversation_id, conversation_id, limit))
+            return cursor.lastrowid
+
+    def dom_observations(self, conversation_id: int) -> list[dict]:
+        rows = self._conn.execute('SELECT * FROM dom_observations WHERE conversation_id = ? '
+                                  'ORDER BY id', (conversation_id,)).fetchall()
+        return [{**dict(row), 'payload': json.loads(row['payload_json'])} for row in rows]
 
     # --- decisions and outbox ---------------------------------------
     def add_decision(
