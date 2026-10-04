@@ -19,7 +19,6 @@ The rules this class must never break:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
 import os
@@ -598,13 +597,6 @@ class InstagramBrowser:
         """
         from shadow import alignment
 
-        def history_keys(items):
-            # Same text with a different quoted target/media kind is not a
-            # verified overlap. Keep the coordinator's public key unchanged.
-            return [alignment.key_of(e.sender, e.kind, json.dumps(
-                [normalize(e.text), e.media_label, normalize(e.reply_to_text or '')],
-                ensure_ascii=False)) for e in items]
-
         raw = await self.page.evaluate(JS_RAW)
         path = raw.get('path')
         thread_id = thread_id_from_url(path)
@@ -636,13 +628,13 @@ class InstagramBrowser:
             if settled['reason'] != 'settled':
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
                                detail='history_load_unsettled')
-            old_keys, new_keys = history_keys(older.events), history_keys(events)
+            old_keys, new_keys = alignment.keys_of(older.events), alignment.keys_of(events)
             if old_keys == new_keys:
                 if settled.get('moved') and not settled['raw'].get('at_visual_start'):
                     continue
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
                                detail='history_no_progress')
-            overlap = alignment.align(old_keys, new_keys)
+            overlap = alignment.align(old_keys, new_keys, allow_containment=False)
             if overlap.status != 'ok' or not overlap.overlap:
                 return ReadResult('dom_unknown', thread_id=thread_id,
                                   detail=f'history_{overlap.status}')

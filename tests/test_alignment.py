@@ -53,14 +53,26 @@ class TestNormalize(unittest.TestCase):
 
 
 class TestKeysOf(unittest.TestCase):
+    def test_quote_and_media_evidence_match_storage_but_not_other_targets(self) -> None:
+        event = ObservedEvent(0, "contact", "text", "same", media_label="photo",
+                              reply_to_text="first", evidence={"edited": True})
+        row = {"sender": "contact", "kind": "text", "text": "same",
+               "media_label": "photo", "reply_to": "first"}
+        self.assertEqual(A.keys_of([event]), A.keys_of([row]))
+        self.assertNotEqual(A.keys_of([event]), A.keys_of([dict(row, reply_to="second")]))
+        self.assertNotEqual(A.keys_of([event]), A.keys_of([dict(row, media_label="video")]))
+        self.assertEqual(A.keys_of([event]), A.keys_of([
+            ObservedEvent(0, "contact", "text", "same", media_label="photo",
+                          reply_to_text="first", evidence={"edited": False, "reactions": ["❤️"]})]))
+
     def test_reads_both_storage_rows_and_observed_events(self) -> None:
         rows = [{"sender": "contact", "kind": "text", "text": "one"}]
         events = [observed("contact", "one", position=0)]
         self.assertEqual(A.keys_of(rows), A.keys_of(events))
 
     def test_a_row_missing_a_field_becomes_unknown_not_a_guess(self) -> None:
-        self.assertEqual(A.keys_of([{}]), [("unknown", "unknown", "")])
-        self.assertEqual(A.keys_of([{"text": "hi"}]), [("unknown", "unknown", "hi")])
+        self.assertEqual(A.keys_of([{}]), [k("unknown", "", "unknown")])
+        self.assertEqual(A.keys_of([{"text": "hi"}]), [k("unknown", "hi", "unknown")])
 
 
 class TestBaseline(unittest.TestCase):
@@ -110,15 +122,11 @@ class TestOverlap(unittest.TestCase):
         self.assertEqual(result.new_start_index, 1)
         self.assertEqual(result.candidates, (1,))
 
-    def test_a_window_that_re_reads_older_history_holds_rather_than_guessing(self) -> None:
-        # Documented limitation: alignment matches the window PREFIX against the
-        # stored SUFFIX, so a read that returns MORE history than was stored
-        # cannot be placed. It is a gap, not a silent merge, and the caller holds
-        # the thread. Recorded in D40 with its upgrade path.
+    def test_a_deeper_window_uses_unique_stored_containment(self) -> None:
         window = [k("owner", "hello"), k("contact", "hey")] + self.stored + [k("contact", "ok")]
         result = A.align(self.stored, window)
-        self.assertEqual(result.status, "gap")
-        self.assertEqual(result.new_events(window), [])
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(result.new_events(window), [k("contact", "ok")])
 
 
 class TestNoOverlap(unittest.TestCase):
@@ -139,6 +147,27 @@ class TestNoOverlap(unittest.TestCase):
 
 
 class TestRepeats(unittest.TestCase):
+    def test_alternating_repeat_must_not_silently_drop_two_real_messages(self) -> None:
+        # True history is a,b,a,b,a,new; this window starts at its third event.
+        stored = [k("contact", "a"), k("owner", "b"), k("contact", "a")]
+        window = stored + [k("contact", "new")]
+        result = A.align(stored, window)
+        self.assertEqual(result.status, "ambiguous")
+        self.assertEqual(result.new_events(window), [])
+
+    def test_unique_stored_block_in_deeper_window_adds_only_new_tail(self) -> None:
+        stored = [k("contact", "a"), k("owner", "b")]
+        window = [k("contact", "older")] + stored + [k("contact", "new")]
+        result = A.align(stored, window)
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(result.new_start_index, 3)
+        self.assertEqual(result.new_events(window), [k("contact", "new")])
+
+    def test_repeated_stored_blocks_in_deeper_window_are_ambiguous(self) -> None:
+        stored = [k("contact", "a"), k("owner", "b")]
+        window = [k("contact", "older")] + stored + stored + [k("contact", "new")]
+        self.assertEqual(A.align(stored, window).status, "ambiguous")
+
     def test_pure_repeats_are_ambiguous_rather_than_guessed(self) -> None:
         # A stored run of two identical messages plus a window of three matches
         # at k=1 and k=2. Either answer invents or drops a real message.
@@ -147,7 +176,7 @@ class TestRepeats(unittest.TestCase):
         result = A.align(stored, window)
         self.assertEqual(result.status, "ambiguous")
         self.assertEqual(result.new_start_index, -1)
-        self.assertEqual(result.candidates, (1, 2))
+        self.assertEqual(result.candidates, (1, 2, 3))
         self.assertEqual(result.new_events(window), [])
 
     def test_a_longer_run_of_repeats_stays_ambiguous_without_a_distinct_anchor(self) -> None:
@@ -155,32 +184,26 @@ class TestRepeats(unittest.TestCase):
         window = [k("contact", "ha")] * 5
         result = A.align(stored, window)
         self.assertEqual(result.status, "ambiguous")
-        self.assertEqual(result.candidates, (1, 2, 3))
+        self.assertEqual(result.candidates, (1, 2, 3, 4, 5))
 
-    def test_repeats_with_a_distinct_anchor_align_on_the_longest_overlap(self) -> None:
+    def test_distinct_keys_do_not_disambiguate_alternating_repeats(self) -> None:
         stored = [k("contact", "a"), k("owner", "b"), k("contact", "a")]
         window = [k("contact", "a"), k("owner", "b"), k("contact", "a"), k("contact", "ha"), k("contact", "ha")]
         result = A.align(stored, window)
-        self.assertEqual(result.status, "ok")
-        self.assertEqual(result.new_start_index, 3)
-        self.assertEqual(result.new_events(window), [k("contact", "ha"), k("contact", "ha")])
+        self.assertEqual(result.status, "ambiguous")
+        self.assertEqual(result.new_events(window), [])
 
     def test_an_overlap_of_two_identical_keys_is_still_a_guess(self) -> None:
         stored = [k("contact", "a"), k("contact", "a")]
         window = [k("contact", "a"), k("contact", "a"), k("contact", "a")]
         result = A.align(stored, window)
         self.assertEqual(result.status, "ambiguous")
-        # The thresholds are the documented ones: an overlap must be at least
-        # this long AND carry this many distinct keys.
-        self.assertEqual(A.MIN_TRUSTED_OVERLAP, 3)
-        self.assertEqual(A.MIN_DISTINCT_KEYS, 2)
+        self.assertFalse(result.is_new)
 
-    def test_a_single_stored_repeat_aligns_unambiguously(self) -> None:
-        # One stored "ha" and three in the window is not ambiguous: only k=1 can
-        # match, so the two later ones are plainly new.
+    def test_a_single_stored_repeat_can_be_any_of_three_positions(self) -> None:
         result = A.align([k("contact", "ha")], [k("contact", "ha")] * 3)
-        self.assertEqual(result.status, "ok")
-        self.assertEqual(result.new_start_index, 1)
+        self.assertEqual(result.status, "ambiguous")
+        self.assertEqual(result.new_start_index, -1)
 
     def test_a_repeat_at_a_new_position_is_a_new_event_not_a_duplicate(self) -> None:
         stored = [k("contact", "ok"), k("owner", "done")]
@@ -245,7 +268,7 @@ class TestUnknownSender(unittest.TestCase):
         # Same sender, same text, different kind: still not the same event, and
         # the window is held rather than aligned onto a bubble of another kind.
         stored = [k("contact", "same", kind="unknown")]
-        window = [k("contact", "same", kind="text"), k("contact", "same", kind="unknown")]
+        window = [k("contact", "same", kind="text")]
         result = A.align(stored, window)
         self.assertEqual(result.status, "gap")
         self.assertEqual(result.new_events(window), [])

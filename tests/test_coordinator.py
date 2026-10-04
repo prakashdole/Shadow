@@ -155,6 +155,31 @@ class TestAccountBinding(CoordinatorCase):
 
 
 class TestBaselineAndOverlap(CoordinatorCase):
+    async def test_deeper_context_is_not_stored_as_fresh_inbound(self) -> None:
+        conversation = self.conversation()
+        self.seed_history(conversation, "contact", "anchor")
+        self.seed_history(conversation, "owner", "answer")
+        self.inbox(row(0))
+        self.script_reads(THREAD_A, event(0, "contact", "older"),
+                          event(1, "contact", "anchor"), event(2, "owner", "answer"),
+                          event(3, "contact", "new"))
+        report = await self.coordinator.tick_discover()
+        self.assertEqual(report.ingested, 1)
+        self.assertEqual([e["text"] for e in self.storage.get_events(conversation)],
+                         ["anchor", "answer", "new"])
+
+    async def test_alternating_overlap_holds_instead_of_dropping_messages(self) -> None:
+        conversation = self.conversation()
+        self.seed_history(conversation, "contact", "a")
+        self.seed_history(conversation, "owner", "b")
+        self.seed_history(conversation, "contact", "a")
+        self.inbox(row(0))
+        self.script_reads(THREAD_A, event(0, "contact", "a"), event(1, "owner", "b"),
+                          event(2, "contact", "a"), event(3, "contact", "new"))
+        report = await self.coordinator.tick_discover()
+        self.assertEqual(report.ingested, 0)
+        self.assertEqual(self.work(conversation)["held_reason"], "align_ambiguous")
+
     async def test_the_first_read_is_history_and_creates_no_reply_work(self) -> None:
         conversation = self.conversation()
         self.inbox(row(0, label="Test One", preview="kal milte hai?"))
