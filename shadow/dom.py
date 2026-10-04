@@ -570,7 +570,42 @@ def _outside_action(leaf, pane_w):
     return _outside_kind(leaf['text'], leaf['laid'], (leaf['width'] / pane_w) if pane_w else 0.0)
 
 
+def read_coverage(result: ReadResult, requested_count: int | None = None) -> ReadResult:
+    """Normalize facts on every return, including safety holds and early exits."""
+    count = sum(e.kind in ('text', 'media', 'unknown') for e in result.events)
+    coverage = {
+        'parser_profile': 'unknown', 'visual_edge': False, 'server_complete': False,
+        'requested_count': requested_count, 'collected_count': count,
+        'rendered_count': sum(e.laid_out and e.kind in ('text', 'media', 'unknown') for e in result.events),
+        'collection_stop': result.detail, 'budget_exhausted': 'budget_exhausted' in result.detail,
+        'ambiguous': result.detail == 'history_ambiguous',
+        'owner_interrupted': result.detail == 'history_owner_interrupted',
+        'stored_anchor': result.detail == 'history_stored_anchor',
+        'scroll_position_restored': None, 'view_content_restored': None,
+        'restoration_reason': 'not_attempted', 'restored_rendered_count': 0,
+        **result.coverage,
+    }
+    # Counts describe this returned window, not a previous collection step.
+    coverage.update(requested_count=requested_count, collected_count=count,
+                    requested_count_reached=requested_count is not None and count >= requested_count,
+                    collection_stop=result.detail,
+                    budget_exhausted=coverage['budget_exhausted'] or 'budget_exhausted' in result.detail,
+                    ambiguous=coverage['ambiguous'] or result.detail == 'history_ambiguous',
+                    stored_anchor=coverage['stored_anchor'] or result.detail == 'history_stored_anchor',
+                    owner_interrupted=coverage['owner_interrupted'] or result.detail == 'history_owner_interrupted',
+                    server_complete=False)
+    coverage['collection_interrupted'] = coverage['owner_interrupted']
+    return replace(result, coverage=coverage)
+
+
 def interpret_read(
+    raw: dict, thread_id: str | None, navigations_used: int = 0,
+    extra_detail: str = '',
+) -> ReadResult:
+    return read_coverage(_interpret_read(raw, thread_id, navigations_used, extra_detail))
+
+
+def _interpret_read(
     raw: dict, thread_id: str | None, navigations_used: int = 0,
     extra_detail: str = "",
 ) -> ReadResult:

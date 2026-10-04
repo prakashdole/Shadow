@@ -525,6 +525,52 @@ class B03KindsTest(BrowserCase):
 
 
 class B04CompletenessTest(BrowserCase):
+    async def test_cancelled_history_never_dispatches_first_scroll(self):
+        from shadow.instagram import _JS_HISTORY_BEGIN, _JS_HISTORY_END, _JS_WAIT_RAW
+        await self.open_fixture('thread_long.html')
+        await self.set_path('/direct/t/12345/')
+        self.assertTrue(await self.page.evaluate(_JS_HISTORY_BEGIN))
+        before = await self.page.evaluate("document.querySelector('.pane').scrollTop")
+        await self.page.evaluate('window.__shadowHistoryGuard.interrupted = true')
+        result = await self.page.evaluate(_JS_WAIT_RAW,
+            [JS_RAW, True, '/direct/t/12345/', 400, 150, 75, True])
+        self.assertEqual(result['reason'], 'owner_interrupted')
+        self.assertEqual(await self.page.evaluate("document.querySelector('.pane').scrollTop"), before)
+        await self.page.evaluate(_JS_HISTORY_END, [JS_RAW, 400, 150, 75, []])
+
+    async def test_focus_takeover_cancels_before_scroll(self):
+        from shadow.instagram import _JS_HISTORY_BEGIN, _JS_HISTORY_END, _JS_WAIT_RAW
+        await self.open_fixture('thread_long.html')
+        await self.set_path('/direct/t/12345/')
+        self.assertTrue(await self.page.evaluate(_JS_HISTORY_BEGIN))
+        before = await self.page.evaluate("document.querySelector('.pane').scrollTop")
+        await self.page.evaluate("document.querySelector('[contenteditable]').focus()")
+        result = await self.page.evaluate(_JS_WAIT_RAW,
+            [JS_RAW, True, '/direct/t/12345/', 400, 150, 75, True])
+        self.assertEqual(result['reason'], 'owner_interrupted')
+        self.assertEqual(await self.page.evaluate("document.querySelector('.pane').scrollTop"), before)
+        restoration = await self.page.evaluate(_JS_HISTORY_END, [JS_RAW, 400, 150, 75, []])
+        self.assertFalse(restoration['restored'])
+        self.assertTrue(await self.page.evaluate('window.__shadowHistoryGuard === undefined'))
+
+    async def test_history_coverage_counts_messages_on_early_and_manual_exits(self):
+        from shadow.instagram import InstagramBrowser
+        await self.open_fixture('thread_1to1.html')
+        adapter = InstagramBrowser(); adapter.page = self.page
+        result = await adapter._load_history(1)
+        self.assertEqual(result.coverage['collected_count'],
+                         sum(e.kind in ('text', 'media', 'unknown') for e in result.events))
+        keys = {'collection_stop', 'budget_exhausted', 'ambiguous', 'owner_interrupted',
+                'stored_anchor', 'requested_count_reached', 'server_complete'}
+        self.assertTrue(keys <= result.coverage.keys())
+        self.assertTrue(result.coverage['requested_count_reached'])
+        await self.page.evaluate("document.body.insertAdjacentHTML('beforeend', '<div contenteditable=\"true\" aria-label=\"Message\">owner typing</div>')")
+        held = await adapter._load_history(100)
+        self.assertEqual(held.detail, 'history_manual_text')
+        self.assertEqual(held.coverage['requested_count'], 100)
+        self.assertTrue(keys <= held.coverage.keys())
+        self.assertFalse(held.coverage['requested_count_reached'])
+
     async def test_unique_stored_anchor_stops_recovery_before_large_count(self):
         from shadow.instagram import InstagramBrowser
         from shadow.alignment import keys_of

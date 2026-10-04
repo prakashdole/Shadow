@@ -160,11 +160,11 @@ _JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, 
             attributeFilter: ['aria-busy', 'aria-pressed', 'style', 'class',
                               'role', 'aria-label', 'aria-labelledby', 'dir', 'alt', 'href']});
         const deadline = setTimeout(() => finish(read(), 'timeout'), budget);
-        if (scroll) {
+        check();
+        if (scroll && !done) {
             // Keep viewport overlap; dispatch only after observation is armed.
             pane.scrollBy({top: -Math.max(1, pane.clientHeight * 0.8), behavior: 'instant'});
         }
-        check();
     });
 }"""
 
@@ -175,8 +175,12 @@ _JS_HISTORY_BEGIN = r"""() => {
     const guard = {pane, top: pane.scrollTop, extent: pane.scrollHeight,
         path: location.pathname, interrupted: false};
     guard.onInput = event => { if (event.isTrusted) guard.interrupted = true; };
-    guard.types = ['wheel', 'pointerdown', 'keydown', 'beforeinput'];
+    guard.types = ['wheel', 'pointerdown', 'keydown', 'beforeinput', 'focusin'];
     for (const type of guard.types) document.addEventListener(type, guard.onInput, true);
+    guard.onBlur = () => { guard.interrupted = true; };
+    guard.onVisibility = () => { guard.interrupted = true; };
+    window.addEventListener('blur', guard.onBlur, true);
+    document.addEventListener('visibilitychange', guard.onVisibility, true);
     window.__shadowHistoryGuard = guard;
     return true;
 }"""
@@ -216,6 +220,8 @@ _JS_HISTORY_END = r"""async ([source, budget, quiet, sample, anchors]) => {
         return {restored: false, reason: 'content_unsettled'};
     } finally {
         for (const type of guard.types) document.removeEventListener(type, guard.onInput, true);
+        window.removeEventListener('blur', guard.onBlur, true);
+        document.removeEventListener('visibilitychange', guard.onVisibility, true);
         delete window.__shadowHistoryGuard;
     }
 }"""
@@ -613,6 +619,11 @@ class InstagramBrowser:
                               thread_id_from_url(self.page.url or ""), 1)
 
     async def read_thread(self, thread_id: str, want: int = 0, *, anchor: tuple = ()) -> ReadResult:
+        from shadow.dom import read_coverage
+        return read_coverage(await self._read_thread(thread_id, want, anchor=anchor),
+                             want if want > 0 else None)
+
+    async def _read_thread(self, thread_id: str, want: int = 0, *, anchor: tuple = ()) -> ReadResult:
         assert self.page
         failed = await self._check_account()
         if failed:
@@ -656,6 +667,10 @@ class InstagramBrowser:
                        detail=result.detail or self._detail())
 
     async def _load_history(self, want: int, *, anchor: tuple = ()) -> ReadResult:
+        from shadow.dom import read_coverage
+        return read_coverage(await self._load_history_guarded(want, anchor=anchor), want)
+
+    async def _load_history_guarded(self, want: int, *, anchor: tuple = ()) -> ReadResult:
         assert self.page
         initial = await self.page.evaluate(JS_RAW)
         if initial.get('composer_text'):
@@ -667,7 +682,6 @@ class InstagramBrowser:
         if (immediate.status == 'ok' and all(e.laid_out for e in immediate.events)
                 and sum(e.kind in ('text', 'media', 'unknown') for e in immediate.events) >= want):
             return replace(immediate, detail='history_count_reached', coverage={**immediate.coverage,
-                'requested_count': want, 'collected_count': len(immediate.events),
                 'scroll_position_restored': True, 'view_content_restored': True,
                 'restoration_reason': 'no_scroll_required'})
         if not await self.page.evaluate(_JS_HISTORY_BEGIN):
@@ -747,9 +761,11 @@ class InstagramBrowser:
             ])
             self._assert_on_site()
             if settled['reason'] == 'path_changed':
-                return ReadResult('wrong_thread', detail='thread_changed_during_history')
+                return replace(result, status='wrong_thread', events=tuple(events), complete=False,
+                               detail='thread_changed_during_history')
             if settled['reason'] in ('owner_interrupted', 'pane_replaced'):
-                return ReadResult('dom_unknown', detail='history_' + settled['reason'])
+                return replace(result, status='dom_unknown', events=tuple(events), complete=False,
+                               detail='history_' + settled['reason'])
             older = interpret_read(settled['raw'], thread_id)
             older = replace(older, events=tuple(alignment.sequence_events(older.events)))
             if any(not e.laid_out for e in older.events):
@@ -768,8 +784,8 @@ class InstagramBrowser:
                                detail='history_no_progress')
             overlap = alignment.align(old_keys, new_keys, allow_containment=False)
             if overlap.status != 'ok' or not overlap.overlap:
-                return ReadResult('dom_unknown', thread_id=thread_id,
-                                  detail=f'history_{overlap.status}')
+                return replace(result, status='dom_unknown', events=tuple(events), complete=False,
+                               detail=f'history_{overlap.status}')
             added = list(older.events[:-overlap.overlap])
             if not added:
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
