@@ -34,7 +34,7 @@ from shadow.contracts import (
     CheckPoint, InboxResult, InboxRow, ReadResult, SendCheck, SendResult,
 )
 from shadow.dom import (
-    JS_CLEAR_COMPOSER, JS_COMPOSER, JS_FIND_PANE, JS_RAW, JS_ROW_LINES, interpret_inbox, interpret_read,
+    JS_CLEAR_COMPOSER, JS_COMPOSER, JS_FIND_PANE, JS_MESSAGE_ROOTS, JS_RAW, JS_ROW_LINES, interpret_inbox, interpret_read,
     normalize, same_thread, thread_id_from_url,
 )
 from shadow.settings import Settings
@@ -103,8 +103,8 @@ _JS_PANE_CENTRE = r"""() => {
 
 # One browser round-trip; DOM mutations and periodic geometry checks share a
 # deadline. Timer sampling also works in headless/background tabs without rAF.
-_JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, scroll]) => {
-""" + JS_FIND_PANE + r"""
+_JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, scroll, maxScrollPercent]) => {
+""" + JS_FIND_PANE + JS_MESSAGE_ROOTS + r"""
     const read = eval('(' + source + ')');
     const pane = scroll ? findMessagePane() : null;
     if (scroll && !pane) return {raw: read(), reason: 'pane_missing'};
@@ -167,8 +167,17 @@ _JS_WAIT_RAW = r"""async ([source, thread, expectedPath, budget, quiet, sample, 
         const deadline = setTimeout(() => finish(read(), 'timeout'), budget);
         check();
         if (scroll && !done) {
-            // Keep viewport overlap; dispatch only after observation is armed.
-            pane.scrollBy({top: -Math.max(1, pane.clientHeight * 0.8), behavior: 'instant'});
+            // Retain a visible root even in sparse virtualized windows. Only
+            // sequence alignment can prove overlap; geometry cannot merge data.
+            const bounds = pane.getBoundingClientRect();
+            const visible = messageRoots(pane).roots.map(root => root.getBoundingClientRect())
+                .filter(r => r.width > 0 && r.height > 0 && r.bottom > bounds.top && r.top < bounds.bottom)
+                .sort((a, b) => a.top - b.top);
+            const cap = pane.clientHeight * maxScrollPercent / 100;
+            const anchorRoom = visible.length
+                ? bounds.bottom - Math.max(bounds.top, visible[0].top)
+                    - Math.min(visible[0].height, pane.clientHeight - cap) : cap;
+            pane.scrollBy({top: -Math.max(1, Math.min(cap, anchorRoom)), behavior: 'instant'});
         }
     });
 }"""
@@ -775,6 +784,7 @@ class InstagramBrowser:
             settled = await self.page.evaluate(_JS_WAIT_RAW, [
                 JS_RAW, True, path, min(remaining, self.settings.history_step_timeout_ms),
                 self.settings.dom_settle_ms, self.settings.dom_sample_ms, True,
+                self.settings.history_scroll_percent,
             ])
             self._assert_on_site()
             if settled['reason'] == 'path_changed':

@@ -118,6 +118,15 @@ class TestSettings(unittest.TestCase):
                 with self.subTest(name=name, value=value), self.assertRaises(S.SettingsError):
                     S.validate(replace(S.Settings(), **{name:value}))
 
+    def test_history_scroll_percent_retains_viewport_overlap(self):
+        from dataclasses import replace
+
+        for value in (0, -1, 100, True, 1.5):
+            with self.subTest(value=value), self.assertRaises(S.SettingsError):
+                S.validate(replace(S.Settings(), history_scroll_percent=value))
+        for value in (1, S.Settings().history_scroll_percent, 99):
+            S.validate(replace(S.Settings(), history_scroll_percent=value))
+
     def test_out_of_range_and_malformed_values_are_rejected(self) -> None:
         cases = {
             "reply_delay_momentum = [90, 15]\n": "reply_delay_momentum",

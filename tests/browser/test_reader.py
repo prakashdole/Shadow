@@ -836,6 +836,51 @@ class B04CompletenessTest(BrowserCase):
         self.assertEqual(result.detail, 'history_count_reached')
         self.assertEqual(await self.page.evaluate("document.querySelector('.pane').scrollTop"), before)
 
+    async def test_sparse_virtualized_history_keeps_visible_overlap_anchor(self):
+        from shadow.instagram import InstagramBrowser
+        from shadow.settings import Settings
+        from unittest.mock import patch
+
+        for reverse in (False, True):
+            with self.subTest(reverse=reverse):
+                if self.page:
+                    await self.page.close()
+                await self.open_fixture('thread_long.html')
+                await self.page.evaluate("""reverse => {
+                    const pane = document.querySelector('.pane');
+                    pane.style.cssText = 'height:400px;flex:none;padding:0;overflow-y:auto;'
+                        + (reverse ? 'display:flex;flex-direction:column-reverse;' : '');
+                    pane.innerHTML = '<div style="position:relative;height:2000px;flex:none">'
+                        + [[1650,'older'],[1800,'a'],[1850,'b']].map(([top,text]) =>
+                            '<div role="article" style="position:absolute;left:100px;top:' + top
+                            + 'px;width:160px;height:40px"><span dir="auto">' + text + '</span></div>'
+                        ).join('') + '</div>';
+                    pane.scrollTop = reverse ? -100 : 1500;
+                    const initial = pane.scrollTop;
+                    const render = () => {
+                        const bounds = pane.getBoundingClientRect();
+                        for (const root of pane.querySelectorAll('[role="article"]')) {
+                            root.style.display = '';
+                            const r = root.getBoundingClientRect();
+                            if (r.bottom <= bounds.top || r.top >= bounds.bottom
+                                    || (root.textContent === 'older' && pane.scrollTop === initial))
+                                root.style.display = 'none';
+                        }
+                    };
+                    render(); pane.addEventListener('scroll', render);
+                }""", reverse)
+                await self.page.wait_for_timeout(80)
+                adapter = InstagramBrowser(settings=Settings(history_step_timeout_ms=500))
+                adapter.page = self.page
+                self.assertEqual([e.text for e in (await self.read()).events], ['a', 'b'])
+                before = await self.page.evaluate("document.querySelector('.pane').scrollTop")
+                with patch.object(adapter, '_assert_on_site'):
+                    result = await adapter._load_history(3)
+                self.assertEqual(result.status, 'ok', result.detail)
+                self.assertEqual([e.text for e in result.events], ['older', 'a', 'b'])
+                self.assertTrue(result.coverage['view_content_restored'])
+                self.assertEqual(await self.page.evaluate("document.querySelector('.pane').scrollTop"), before)
+
     async def test_readiness_does_not_accept_a_transient_empty_pane(self):
         from shadow.instagram import InstagramBrowser
 

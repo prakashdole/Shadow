@@ -60,6 +60,10 @@ def _positive_int(name, value):
     _ints(name, value, lo=1)
 
 
+def _scroll_percent(name, value):
+    _ints(name, value, lo=1, hi=99)
+
+
 def _pair(name, value):
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         _fail(name, value, "expected a (min, max) pair of seconds")
@@ -197,6 +201,7 @@ CHECKS = {
     "dom_settle_ms": _positive_int,
     "dom_sample_ms": _positive_int,
     "history_max_steps": _positive_int,
+    "history_scroll_percent": _scroll_percent,
     "align_tail_events": _positive_int,
     "dom_observation_limit": _positive_int,
     "dom_observation_bytes": _positive_int,
@@ -253,6 +258,7 @@ class Settings:
     dom_settle_ms: int = 150
     dom_sample_ms: int = 75
     history_max_steps: int = 24
+    history_scroll_percent: int = 80
     align_tail_events: int = 200
     dom_observation_limit: int = 32
     dom_observation_bytes: int = 262_144
