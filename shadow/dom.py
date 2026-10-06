@@ -644,7 +644,12 @@ def read_coverage(result: ReadResult, requested_count: int | None = None) -> Rea
                     stored_anchor=coverage['stored_anchor'] or result.detail == 'history_stored_anchor',
                     owner_interrupted=coverage['owner_interrupted'] or result.detail == 'history_owner_interrupted',
                     server_complete=False)
-    coverage['collection_interrupted'] = coverage['owner_interrupted']
+    coverage['collection_interrupted'] = bool(coverage.get('collection_interrupted')) or (
+        coverage['owner_interrupted'] or result.detail in (
+            'history_pane_replaced', 'history_view_replaced',
+            'thread_changed_during_history', 'thread_changed_during_read',
+        )
+    )
     return replace(result, coverage=coverage)
 
 

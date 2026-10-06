@@ -756,6 +756,8 @@ class B04CompletenessTest(BrowserCase):
             result = await adapter._load_history(100)
         self.assertEqual(result.status, 'dom_unknown')
         self.assertFalse(result.coverage['scroll_position_restored'])
+        self.assertTrue(result.coverage['collection_interrupted'])
+        self.assertFalse(result.coverage['owner_interrupted'])
         self.assertTrue(await self.page.evaluate('window.__shadowHistoryGuard === undefined'))
 
     """B04: order preserved, repeats kept, incompleteness reported."""

@@ -11,8 +11,33 @@ import unittest
 
 from shadow.dom import (
     classify_preview, inbox_status, interpret_inbox, interpret_read, normalize,
-    page_status, same_thread, strip_age, thread_id_from_url,
+    page_status, read_coverage, same_thread, strip_age, thread_id_from_url,
 )
+from shadow.contracts import ReadResult
+
+
+class CoverageTest(unittest.TestCase):
+    def test_collection_interruption_is_not_only_owner_takeover(self):
+        cases = [
+            ('history_owner_interrupted', True, True),
+            ('history_pane_replaced', True, False),
+            ('history_view_replaced', True, False),
+            ('thread_changed_during_history', True, False),
+            ('thread_changed_during_read', True, False),
+            ('history_count_reached', False, False),
+            ('history_load_unsettled', False, False),
+        ]
+        for detail, interrupted, owner in cases:
+            with self.subTest(detail=detail):
+                result = read_coverage(ReadResult('dom_unknown', detail=detail), 10)
+                self.assertEqual(result.coverage['collection_interrupted'], interrupted)
+                self.assertEqual(result.coverage['owner_interrupted'], owner)
+                self.assertFalse(result.coverage['requested_count_reached'])
+
+    def test_existing_interruption_evidence_survives_normalization(self):
+        result = read_coverage(ReadResult('dom_unknown', detail='history_view_restore_failed',
+                                         coverage={'collection_interrupted': True}), 10)
+        self.assertTrue(result.coverage['collection_interrupted'])
 
 PANE = {"left": 0.0, "right": 1000.0, "width": 1000.0}
 
