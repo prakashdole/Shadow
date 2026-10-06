@@ -928,6 +928,7 @@ class B04CompletenessTest(BrowserCase):
         self.assertEqual(result.status, 'ok')
         self.assertEqual([e.text for e in result.events], ['older', 'a', 'b', 'c'])
         self.assertFalse(result.complete)
+        self.assertEqual(result.coverage['rendered_count'], 4)
 
     async def test_static_history_timeout_is_incomplete_and_does_not_duplicate(self):
         from shadow.instagram import InstagramBrowser

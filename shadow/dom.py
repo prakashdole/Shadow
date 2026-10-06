@@ -634,6 +634,8 @@ def read_coverage(result: ReadResult, requested_count: int | None = None) -> Rea
     }
     # Counts describe this returned window, not a previous collection step.
     coverage.update(requested_count=requested_count, collected_count=count,
+                    rendered_count=sum(e.laid_out and e.kind in ('text', 'media', 'unknown')
+                                       for e in result.events),
                     requested_count_reached=requested_count is not None and count >= requested_count
                         and all(e.laid_out for e in result.events if e.kind in ('text', 'media', 'unknown')),
                     collected_readable_count=sum(e.laid_out and e.kind in ('text', 'media', 'unknown')

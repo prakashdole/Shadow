@@ -39,6 +39,14 @@ class CoverageTest(unittest.TestCase):
                                          coverage={'collection_interrupted': True}), 10)
         self.assertTrue(result.coverage['collection_interrupted'])
 
+    def test_merged_history_counts_are_derived_from_returned_events(self):
+        result = interpret_read(build([('a', 'one', 'contact'), ('a', 'two', 'owner')]), '123')
+        from dataclasses import replace
+        result = read_coverage(replace(result, coverage={**result.coverage,
+                                                       'rendered_count': 1}), 2)
+        self.assertEqual(result.coverage['rendered_count'], 2)
+        self.assertEqual(result.coverage['collected_readable_count'], 2)
+
 PANE = {"left": 0.0, "right": 1000.0, "width": 1000.0}
 
 

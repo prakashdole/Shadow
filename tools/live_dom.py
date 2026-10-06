@@ -153,10 +153,18 @@ async def audit(profile, output_dir, headless=False):
                         raise ValueError('History needs an open thread and a bounded message count')
                     start = asyncio.get_running_loop().time()
                     result = await browser.read_thread(thread, want=want)
+                    elapsed = round((asyncio.get_running_loop().time() - start) * 1000)
+                    target = output / f'history-{serial:03d}.json'
+                    descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                    with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
+                        json.dump({'requested_count': want, 'parsed': asdict(result),
+                                   'elapsed_ms': elapsed, 'headless': headless,
+                                   'browser_version': browser.page.context.browser.version,
+                                   'viewport': browser.page.viewport_size}, stream, ensure_ascii=False)
                     print(json.dumps({'history_status': result.status, 'detail': result.detail,
                                       'events': len(result.events), 'complete': result.complete,
                                       'coverage': result.coverage,
-                                      'elapsed_ms': round((asyncio.get_running_loop().time() - start) * 1000)}), flush=True)
+                                      'elapsed_ms': elapsed}), flush=True)
                 elif action == 'benchmark':
                     # Same page/viewport, no screenshot in the timed read loop.
                     samples = []
