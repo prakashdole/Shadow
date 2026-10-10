@@ -361,8 +361,9 @@ class TestCommandLine(ImportCase):
             result = self.runner.invoke(self.cli, ["run"])
         self.assertEqual(result.exit_code, 2)
         self.assertIn("Legacy runtime is disabled since P01", result.output)
-        self.assertIn("P03", result.output)
-        self.assertIn("shadow reply", result.output)
+        self.assertIn("wrong chat", result.output)
+        self.assertIn("shadow observe", result.output)
+        self.assertIn("shadow doctor", result.output)
 
     def test_import_history_needs_dry_run_or_explicit_consent(self) -> None:
         result = self.runner.invoke(

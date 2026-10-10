@@ -119,6 +119,18 @@ Enable foreign keys, explicit transactions, busy timeout, integrity checks, and 
 
 Never deduplicate solely by `(sender,text)`: repeated "ha" can be separate real messages. Prefer actually observed stable message IDs. P00b records whether the live DOM exposes any stable message/thread/participant identifiers; P01 designs for exactly those findings and still supports their absence. Otherwise use ordered sequence alignment over overlapping windows with sender/kind/text/media label/quoted text (D44); mutable badges, edit flags and relative ages are not matching identity. Accept only one contiguous new-tail placement, including unique full stored-block containment; competing placements hold. Distinguish a repeat at a new position from a previously seen event. Preserve ambiguity and hold if overlap cannot establish safe identity; do not assert an exactly-once guarantee without server identifiers.
 
+Qualified `react_current_message_v1` values may assist placement only when their
+source is qualified, IDs are unique, full message keys are unchanged, and the
+account/thread match. Every pair of known IDs must match; a missing ID on one
+side falls back to the existing content-candidate rules, while a conflict or
+duplicate holds. Legacy backfill requires independently unique content
+alignment, writes observation evidence only, never populates `platform_msg_id`,
+does not migrate schema and never infers deletion. The same ID with changed
+content intentionally holds; an ID-less copy cannot mask it. Legacy same-node
+edits corroborate known flank IDs and never discard an identity hold; this does
+not claim general edit reconciliation. Restoration reports success only after
+all original-anchor checks and qualified shared-ID agreement pass.
+
 Preview hashes may avoid redundant discovery but cannot mark a conversation handled or identify its recipient. Exact route equality uses parsed numeric thread IDs, not substring containment. Imported folders are unbound until explicitly mapped or unambiguously corroborated; no substring/fuzzy contact match may bring another person's history into a prompt.
 
 Legacy import is read-only toward originals, idempotent by source file fingerprint and row index, with a private quarantine report for malformed rows and missing senders. It preserves original timestamps and marks unknown authorship rather than assigning uncertain generated text to the owner. It does not import old reply hashes as delivery truth. Where imported timestamps are reliable, it derives the owner latency profile used by `reply_delay_cold`; unreliable timestamps leave the fallback range in effect. P01 runs parallel validation on private copies and retains originals until owner-approved cleanup.
@@ -155,7 +167,7 @@ All browser navigation/read/send operations acquire one shared lock; Telegram on
 
 Due time is the latest inbound event plus a delay sampled once per pending batch (`reply_delay_momentum` or `reply_delay_cold`), extended by later inbound events up to `coalesce_extension_max`. A due time outside `active_hours` moves to the next window start plus a freshly sampled cold delay; such work is always reassessed (`stale_reeval`) before sending.
 
-Recheck pause/cancellation, mode, `active_hours`, `owner_active_until` and send caps immediately before typing and immediately before Enter, plus between bubbles. A pause cannot recall a message already submitted. Account/thread drift cancels input; pre-existing nonempty composer indicates manual activity and must not be overwritten. Owner activity in the DOM pauses that thread even though manual overlap is not the expected workflow.
+Recheck pause/cancellation, mode, `active_hours`, `owner_active_until` and send caps immediately before typing and immediately before Enter, plus between bubbles. Receipt/global-pause detection precedes any manual-composer DOM hold. A pause cannot recall a message already submitted. Account/thread drift cancels input; pre-existing nonempty composer indicates manual activity and must not be overwritten. Owner activity in the DOM pauses that thread even though manual overlap is not the expected workflow.
 
 Pause state survives restart. A process crash does not automatically resume uncertain sends. For unchanged eligibility, a safe pre-submit failure may retry at most twice with backoff and fresh checks. Generation/network retries are at most two additional attempts, respect retry hints, and never include a send retry. Stale queued drafts are invalidated by model, policy, profile, or correction-version changes.
 
