@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from shadow.dom import JS_RAW, interpret_inbox, interpret_read, thread_id_from_url
-from shadow.instagram import InstagramBrowser, _JS_PANE_CENTRE
+from shadow.instagram import InstagramBrowser, SAFE_STARTUP_DETAILS, _JS_PANE_CENTRE
 from shadow.operations import private_destination
 
 JS_STRUCTURE = r"""() => {
@@ -84,12 +84,18 @@ async def audit(profile, output_dir, headless=False):
     os.chmod(output, 0o700)
     browser = InstagramBrowser(profile_dir=profile, headless=headless)
     serial = 0
+    evidence_serial = 0
+
+    def evidence_stem(kind):
+        nonlocal evidence_serial
+        evidence_serial += 1
+        return output / f'{kind}-{evidence_serial:03d}'
 
     async def capture():
         nonlocal serial
         browser._assert_on_site()
         serial += 1
-        stem = output / f"capture-{serial:03d}"
+        stem = evidence_stem('capture')
         shot = str(stem) + ".png"
         before_shot = await browser.page.evaluate(JS_RAW)
         await browser.page.screenshot(path=shot)
@@ -117,6 +123,12 @@ async def audit(profile, output_dir, headless=False):
 
     try:
         initial = await browser.start()
+        if initial.status != 'ok':
+            result = {"started": initial.status}
+            if initial.detail in SAFE_STARTUP_DETAILS:
+                result["detail"] = initial.detail
+            print(json.dumps(result), flush=True)
+            return
         print(json.dumps({"started": initial.status, "detail": initial.detail}), flush=True)
         while True:
             line = await asyncio.to_thread(sys.stdin.readline)
@@ -154,7 +166,7 @@ async def audit(profile, output_dir, headless=False):
                     start = asyncio.get_running_loop().time()
                     result = await browser.read_thread(thread, want=want)
                     elapsed = round((asyncio.get_running_loop().time() - start) * 1000)
-                    target = output / f'history-{serial:03d}.json'
+                    target = evidence_stem('history').with_suffix('.json')
                     descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
                     with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
                         json.dump({'requested_count': want, 'parsed': asdict(result),
@@ -179,7 +191,7 @@ async def audit(profile, output_dir, headless=False):
                     payload = {'samples_ms': samples, 'shapes': shapes, 'headless': headless,
                                'browser_version': browser.page.context.browser.version,
                                'viewport': browser.page.viewport_size}
-                    target = output / f'benchmark-{serial:03d}.json'
+                    target = evidence_stem('benchmark').with_suffix('.json')
                     descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
                     with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
                         json.dump(payload, stream, ensure_ascii=False)

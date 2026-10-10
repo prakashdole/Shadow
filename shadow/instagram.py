@@ -27,7 +27,7 @@ from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlparse
 
-from playwright.async_api import Route, async_playwright
+from playwright.async_api import Route, TimeoutError as PlaywrightTimeoutError, async_playwright
 
 from shadow.browser import _is_main_frame, check_url, host_allowed
 from shadow.contracts import (
@@ -52,6 +52,33 @@ SEND_CONFIRM_POLL_MS = 250
 
 IG_INBOX = "https://www.instagram.com/direct/inbox/"
 IG_THREAD = "https://www.instagram.com/direct/t/{thread_id}/"
+SAFE_STARTUP_DETAILS = frozenset({
+    "browser_driver_start_failed",
+    "owned_browser_launch_failed",
+    "owned_browser_navigation_timeout",
+    "owned_browser_navigation_dns_failed",
+    "owned_browser_navigation_network_failed",
+    "owned_browser_readiness_failed",
+})
+
+
+def _owned_start_failure_detail(phase: str, exc: Exception) -> str:
+    """Return a public, non-sensitive startup diagnostic for app-owned Chromium."""
+    if phase == "launch":
+        return "owned_browser_launch_failed"
+    if phase == "navigation":
+        message = str(exc).casefold()
+        if isinstance(exc, (asyncio.TimeoutError, PlaywrightTimeoutError)):
+            return "owned_browser_navigation_timeout"
+        if any(marker in message for marker in (
+            "err_name_not_resolved", "name resolution", "getaddrinfo", "dns_probe",
+        )):
+            return "owned_browser_navigation_dns_failed"
+        if any(marker in message for marker in (
+            "err_internet_disconnected", "err_network", "network is unreachable",
+        )):
+            return "owned_browser_navigation_network_failed"
+    return "owned_browser_start_failed"
 
 # Attached to a bubble that reports a delivery failure. Read through the
 # production reader, so a visible error is evidence rather than a guess.
@@ -408,11 +435,16 @@ class InstagramBrowser:
 
     async def start(self) -> InboxResult:
         """Bind to the single Instagram tab. Returns a status, never raises."""
-        self._pw = await async_playwright().start()
+        try:
+            self._pw = await async_playwright().start()
+        except Exception:
+            return InboxResult("dom_unknown", detail="browser_driver_start_failed")
         if self.profile_dir is not None:
+            phase = "profile"
             try:
                 self.profile_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
                 os.chmod(self.profile_dir, 0o700)
+                phase = "launch"
                 self._owned_context = await self._pw.chromium.launch_persistent_context(
                     self.profile_dir, headless=self.headless, viewport={"width": 1280, "height": 900},
                     locale="en-US", accept_downloads=False, chromium_sandbox=True,
@@ -421,21 +453,33 @@ class InstagramBrowser:
                 if not pages:
                     self.page = await self._owned_context.new_page()
                     await self._install_guard()
+                    phase = "navigation"
                     await self.page.goto(IG_INBOX, wait_until="domcontentloaded")
                     pages = [self.page]
                 if len(pages) != 1:
+                    try:
+                        await self.close()
+                    except Exception:
+                        pass
                     return InboxResult("dom_unknown", detail="owned_profile_multiple_instagram_tabs")
                 if self.page is not pages[0]:
                     self.page = pages[0]
                     await self._install_guard()
-                await self._wait_readable()
+                phase = "readiness"
+                if not await self._wait_readable():
+                    await self.close()
+                    return InboxResult("dom_unknown", detail="owned_browser_readiness_failed")
                 failed = await self._check_account()
                 if failed:
                     return failed
                 return interpret_inbox(await self.page.evaluate(JS_RAW), extra_detail=self._detail())
-            except Exception:
-                await self.close()
-                return InboxResult("dom_unknown", detail="owned_browser_start_failed")
+            except Exception as exc:
+                detail = _owned_start_failure_detail(phase, exc)
+                try:
+                    await self.close()
+                except Exception:
+                    pass
+                return InboxResult("dom_unknown", detail=detail)
         try:
             self._browser = await self._pw.chromium.connect_over_cdp(self.cdp_url)
         except Exception as exc:
@@ -473,14 +517,18 @@ class InstagramBrowser:
 
     async def close(self) -> None:
         """Stop Playwright only. The owner's browser, context and tabs stay."""
-        if self._owned_context is not None:
-            await self._owned_context.close()
+        try:
+            if self._owned_context is not None:
+                await self._owned_context.close()
+        finally:
             self._owned_context = None
-        if self._pw:
-            await self._pw.stop()
-            self._pw = None
-        self._browser = None
-        self.page = None
+            try:
+                if self._pw:
+                    await self._pw.stop()
+            finally:
+                self._pw = None
+                self._browser = None
+                self.page = None
 
     async def _install_guard(self) -> None:
         assert self.page
