@@ -31,6 +31,7 @@ from playwright.async_api import Route, TimeoutError as PlaywrightTimeoutError, 
 
 from shadow.browser import _is_main_frame, check_url, host_allowed
 from shadow.contracts import (
+    GLOBAL_PAUSE_STATUSES,
     CheckPoint, InboxResult, InboxRow, ReadResult, SendCheck, SendResult,
 )
 from shadow.dom import (
@@ -293,6 +294,30 @@ def refuse_cdp_url(url: str) -> None:
 
 def _owner_positions(result: ReadResult) -> list[int]:
     return [e.position for e in result.events if e.sender == "owner"]
+
+
+def _history_identity_hold(events) -> str | None:
+    """Return a conservative hold for conflict or duplicate runtime identity."""
+    from shadow import alignment
+
+    ids = [alignment.runtime_message_id(event) for event in events]
+    needs_validation = (any(alignment.runtime_identity_conflict(event) for event in events)
+                        or len([value for value in ids if value is not None])
+                        != len(set(value for value in ids if value is not None)))
+    if not needs_validation:
+        return None
+    validated = alignment.align_events(events, events, allow_containment=False)
+    return validated.status if validated.status in ('gap', 'ambiguous') else 'gap'
+
+
+def _restored_content_matches(original, restored) -> bool:
+    """Keep content restoration compatible with any qualified runtime identities."""
+    from shadow import alignment
+
+    if not original or _history_identity_hold(original) or _history_identity_hold(restored):
+        return False
+    aligned = alignment.align_events(original, restored)
+    return any(endpoint >= len(original) for endpoint in aligned.candidates)
 
 
 async def _send_on_page(
@@ -747,12 +772,15 @@ class InstagramBrowser:
     async def _load_history_guarded(self, want: int, *, anchor: tuple = ()) -> ReadResult:
         assert self.page
         initial = await self.page.evaluate(JS_RAW)
-        if initial.get('composer_text'):
-            return replace(interpret_read(initial, thread_id_from_url(initial.get('path'))),
-                           status='dom_unknown', detail='history_manual_text')
         immediate = interpret_read(initial, thread_id_from_url(initial.get('path')))
+        if immediate.status in GLOBAL_PAUSE_STATUSES:
+            return immediate
+        if initial.get('composer_text'):
+            return replace(immediate, status='dom_unknown', detail='history_manual_text')
         if any(not e.laid_out for e in immediate.events):
             return replace(immediate, status='dom_unknown', complete=False, detail='history_unlaid_messages')
+        if (hold := _history_identity_hold(immediate.events)):
+            return replace(immediate, status='dom_unknown', complete=False, detail='history_' + hold)
         if (immediate.status == 'ok' and all(e.laid_out for e in immediate.events)
                 and sum(e.kind in ('text', 'media', 'unknown') for e in immediate.events) >= want):
             return replace(immediate, detail='history_count_reached', coverage={**immediate.coverage,
@@ -770,13 +798,12 @@ class InstagramBrowser:
                             ensure_ascii=False, separators=(',', ':'))
                  for a in initial.get('articles', []) if a.get('laid')]])
         from shadow import alignment
-        anchors = alignment.keys_of([e for e in alignment.sequence_events(interpret_read(
-            initial, thread_id_from_url(initial.get('path'))).events) if e.laid_out])
-        restored_events = interpret_read(restoration.get('raw', {}),
-                                        thread_id_from_url(initial.get('path'))).events
-        visible = alignment.keys_of([e for e in alignment.sequence_events(restored_events) if e.laid_out])
-        content_restored = bool(anchors) and any(visible[i:i + len(anchors)] == anchors
-                                                for i in range(len(visible) - len(anchors) + 1))
+        anchors = [e for e in alignment.sequence_events(interpret_read(
+            initial, thread_id_from_url(initial.get('path'))).events) if e.laid_out]
+        restored_events = [e for e in alignment.sequence_events(interpret_read(
+            restoration.get('raw', {}), thread_id_from_url(initial.get('path'))).events)
+            if e.laid_out]
+        content_restored = _restored_content_matches(anchors, restored_events)
         coverage = {**result.coverage, 'requested_count': want,
                     'collected_count': sum(e.kind in ('text', 'media', 'unknown') for e in result.events),
                     'collection_stop': result.detail,
@@ -784,7 +811,7 @@ class InstagramBrowser:
                     'ambiguous': result.detail == 'history_ambiguous',
                     'owner_interrupted': restoration['reason'] == 'owner_interrupted',
                     'stored_anchor': result.detail == 'history_stored_anchor',
-                    'restored_rendered_count': len(visible),
+                    'restored_rendered_count': len(restored_events),
                     'scroll_position_restored': restoration['restored'],
                     'view_content_restored': content_restored,
                     'restoration_reason': restoration['reason']}
@@ -816,6 +843,8 @@ class InstagramBrowser:
         if any(not e.laid_out for e in result.events):
             return replace(result, status='dom_unknown', complete=False, detail='history_unlaid_messages')
         events = list(result.events)
+        if (hold := _history_identity_hold(events)):
+            return replace(result, status='dom_unknown', complete=False, detail='history_' + hold)
         deadline = asyncio.get_running_loop().time() + self.settings.dom_read_timeout_ms / 1000
         # A virtualized window can expose one verified older event per scroll.
         # Continue only far enough to satisfy this bounded request; the existing
@@ -850,18 +879,23 @@ class InstagramBrowser:
             if any(not e.laid_out for e in older.events):
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
                                detail='history_unlaid_messages')
+            if (hold := _history_identity_hold(older.events)):
+                return replace(result, status='dom_unknown', events=tuple(events), complete=False,
+                               detail='history_' + hold)
             if older.status != 'ok':
                 return replace(older, events=tuple(events), complete=False)
             if settled['reason'] != 'settled':
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
                                detail='history_load_unsettled')
             old_keys, new_keys = alignment.keys_of(older.events), alignment.keys_of(events)
-            if old_keys == new_keys:
+            old_ids = [alignment.runtime_message_id(event) for event in older.events]
+            new_ids = [alignment.runtime_message_id(event) for event in events]
+            if old_keys == new_keys and old_ids == new_ids:
                 if settled.get('moved') and not settled['raw'].get('at_visual_start'):
                     continue
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
                                detail='history_no_progress')
-            overlap = alignment.align(old_keys, new_keys, allow_containment=False)
+            overlap = alignment.align_events(older.events, events, allow_containment=False)
             if overlap.status != 'ok' or not overlap.overlap:
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
                                detail=f'history_{overlap.status}')

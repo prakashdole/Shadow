@@ -27,6 +27,7 @@ from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from shadow.alignment import RUNTIME_ID_MAX_LENGTH, RUNTIME_ID_SOURCE
 from shadow.settings import data_dir as default_data_dir
 
 try:  # POSIX
@@ -439,6 +440,10 @@ CURRENT_VERSION = MIGRATIONS[-1][0]
 
 class StorageError(Exception):
     """Any refusal to keep using the database as if nothing happened."""
+
+
+class RuntimeIdentityConflict(StorageError):
+    """A qualified runtime identity would collide with stored observation evidence."""
 
 
 class StorageLocked(StorageError):
@@ -1016,6 +1021,43 @@ class Storage:
         """One aligned window is atomic; a failed item cannot leave its prefix."""
         with self.transaction() as conn:
             return [self._insert_event(conn, **fields) for fields in events]
+
+    def bind_runtime_message_ids(self, conversation_id: int, bindings: list[tuple[int, str]]) -> None:
+        """Attach qualified page-local identities without touching platform IDs."""
+        if not bindings:
+            return
+        if (any(not isinstance(event_id, int) or not isinstance(identity, str) or not identity
+                or len(identity) > RUNTIME_ID_MAX_LENGTH for event_id, identity in bindings)
+                or len({event_id for event_id, _ in bindings}) != len(bindings)
+                or len({identity for _, identity in bindings}) != len(bindings)):
+            raise StorageError("Invalid runtime message identity bindings")
+        with self.transaction() as conn:
+            rows = conn.execute("SELECT id, evidence_json FROM events WHERE conversation_id = ?",
+                                (conversation_id,)).fetchall()
+            evidence_by_id = {row["id"]: json.loads(row["evidence_json"] or "{}") for row in rows}
+            existing = {}
+            for event_id, evidence in evidence_by_id.items():
+                identity = evidence.get("runtime_message_id")
+                if (evidence.get("runtime_identity_source") == RUNTIME_ID_SOURCE
+                        and isinstance(identity, str) and identity and len(identity) <= RUNTIME_ID_MAX_LENGTH):
+                    if identity in existing:
+                        raise RuntimeIdentityConflict("Conflicting runtime message identity")
+                    existing[identity] = event_id
+            for event_id, identity in bindings:
+                evidence = evidence_by_id.get(event_id)
+                if evidence is None:
+                    raise StorageError("Runtime message identity target is missing")
+                if any(other_id != event_id and other.get("runtime_message_id") == identity
+                       for other_id, other in evidence_by_id.items()):
+                    raise RuntimeIdentityConflict("Conflicting runtime message identity")
+                prior = evidence.get("runtime_message_id")
+                source = evidence.get("runtime_identity_source")
+                if prior is not None and (prior != identity or source != RUNTIME_ID_SOURCE):
+                    raise RuntimeIdentityConflict("Conflicting runtime message identity")
+                evidence["runtime_message_id"] = identity
+                evidence["runtime_identity_source"] = RUNTIME_ID_SOURCE
+                conn.execute("UPDATE events SET evidence_json = ? WHERE id = ?",
+                             (json.dumps(evidence, ensure_ascii=False, allow_nan=False), event_id))
 
     def revise_event(self, conversation_id: int, event_id: int, *, metadata: dict,
                      text: str | None = None) -> bool:

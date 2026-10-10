@@ -552,17 +552,22 @@ class Coordinator:
             self._hold_unreadable_dom(conversation_id, report)
             return
         stored = A.sequence_events(stored)
-        window = A.keys_of(result.events)
         if not conversation["first_seen_baseline_done"]:
+            initial_alignment = A.align_events((), result.events)
+            if initial_alignment.status != "baseline":
+                self._hold(conversation_id, f"align_{initial_alignment.status}", report, tier="action")
+                report.note(f"conversation {conversation_id}: {initial_alignment.status}")
+                return
             self._clear_unreadable_baseline_hold(conversation_id)
             self._record_baseline(conversation_id, result, report)
             return
         tail = stored[-self.settings.align_tail_events:]
-        result_align = A.align(A.keys_of(tail), window)
+        result_align = self._align_window(conversation_id, tail, result.events)
         edits = []
-        if result_align.status == 'gap':
+        if result_align.status == 'gap' and not A.is_runtime_identity_hold(result_align):
             result_align, edits = self._align_edits(tail, result.events)
-        if result_align.status in ("gap", "ambiguous") and recover:
+        if (result_align.status in ("gap", "ambiguous")
+                and not A.is_runtime_identity_hold(result_align) and recover):
             # One bounded read, on the current thread only. Re-enter all read
             # guards after awaiting; recovery is not permission to bypass them.
             recovered = await self.browser.read_thread(conversation["thread_id"],
@@ -637,6 +642,10 @@ class Coordinator:
         new_events = result.events[result_align.new_start_index:]
         if not new_events:
             self._recover_transient_reread_hold(conversation_id, result, result_align, report)
+            return
+        if not self._runtime_ids_are_new(stored, new_events):
+            self._hold(conversation_id, "align_gap", report, tier="action")
+            report.note(f"conversation {conversation_id}: duplicate runtime identity")
             return
         self._store_events(conversation_id, new_events, stored)
         report.ingested += len(new_events)
@@ -726,6 +735,7 @@ class Coordinator:
         kind/media/quote evidence fail closed. Reload loses continuity by design.
         """
         old, new = A.keys_of(stored), A.keys_of(events)
+        fallback = A.align_events(stored, events)
         candidates = []
         for j in range(1, len(events) - 1):
             event = events[j]
@@ -736,21 +746,25 @@ class Coordinator:
                 continue
             for i in range(1, len(stored) - 1):
                 evidence = json.loads(stored[i].get('evidence_json') or '{}')
+                stored_identity = A.runtime_message_id(stored[i])
+                observed_identity = A.runtime_message_id(event)
                 if (stored[i]['source'] == 'dom' and evidence.get('node_key') == node
+                        and (stored_identity is None or observed_identity is None
+                             or stored_identity == observed_identity)
                         and old[i][0:2] == new[j][0:2] and old[i][3:] == new[j][3:]
                         and old[i][2] != new[j][2]
                         and old.count(old[i - 1]) == old.count(old[i + 1]) == 1
                         and old[i - 1] == new[j - 1] and old[i + 1] == new[j + 1]):
                     candidates.append((i, j))
         if len(candidates) != 1:
-            return A.align(old, new), []
+            return fallback, []
         i, j = candidates[0]
-        amended = list(new); amended[j] = old[i]
-        aligned = A.align(old, amended)
+        amended = list(events); amended[j] = stored[i]
+        aligned = A.align_events(stored, amended)
         start = aligned.new_start_index - aligned.overlap
         if (aligned.status != 'ok' or not start <= j < aligned.new_start_index
                 or len(stored) - aligned.overlap + j - start != i):
-            return A.align(old, new), []
+            return (aligned if A.is_runtime_identity_hold(aligned) else fallback), []
         return aligned, [stored[i]['id']]
 
     def _record_baseline(
@@ -758,8 +772,9 @@ class Coordinator:
     ) -> None:
         """The first read is history. It creates no reply work, ever: Shadow does
         not answer a conversation it has not watched (D40)."""
-        self._store_events(conversation_id, result.events, [])
-        self.storage.mark_baseline_done(conversation_id)
+        with self.storage.transaction():
+            self._store_events(conversation_id, result.events, [])
+            self.storage.mark_baseline_done(conversation_id)
         report.ingested += len(result.events)
         trailing = A.trailing_unanswered_count(A.keys_of(result.events), 0)
         if trailing:
@@ -770,6 +785,25 @@ class Coordinator:
                 conversation_id=conversation_id,
             )
         report.note(f"conversation {conversation_id} baselined ({len(result.events)} events)")
+
+    def _align_window(self, conversation_id: int, stored, window):
+        aligned = A.align_events(stored, window)
+        if aligned.status == "ok":
+            bindings = A.runtime_backfill_pairs(stored, window)
+            try:
+                self.storage.bind_runtime_message_ids(conversation_id, bindings)
+            except ST.RuntimeIdentityConflict:
+                return A.AlignResult("gap", -1, reason="runtime identity backfill conflict")
+        return aligned
+
+    @staticmethod
+    def _runtime_ids_are_new(stored, events) -> bool:
+        """A tail match cannot authorize reinserting an older qualified ID."""
+        existing = {identity for event in stored
+                    if (identity := A.runtime_message_id(event)) is not None}
+        observed = [identity for event in events
+                    if (identity := A.runtime_message_id(event)) is not None]
+        return len(observed) == len(set(observed)) and not existing.intersection(observed)
 
     def _store_events(
         self, conversation_id: int, events, stored: list[dict]
@@ -1318,11 +1352,16 @@ class Coordinator:
             return False
         stored = A.sequence_events(self.storage.get_events(conversation_id))
         result = replace(result, events=tuple(A.sequence_events(result.events)))
-        result_align = A.align(A.keys_of(stored[-self.settings.align_tail_events:]), A.keys_of(result.events))
+        result_align = self._align_window(
+            conversation_id, stored[-self.settings.align_tail_events:], result.events,
+        )
         if result_align.status == "ok" and result_align.new_start_index < len(result.events):
             # The contact said something after the draft was formed. The draft is
             # cancelled and the thread goes back to assessment.
             new_events = result.events[result_align.new_start_index:]
+            if not self._runtime_ids_are_new(stored, new_events):
+                self._hold(conversation_id, "align_gap", report, tier="action")
+                return False
             self._store_events(conversation_id, new_events, stored)
             self.storage.cancel_outbox_items(conversation_id, "new_inbound_before_send")
             self.storage.cancel_decisions(

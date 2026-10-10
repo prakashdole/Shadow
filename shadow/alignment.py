@@ -1,8 +1,8 @@
 """Alignment — mapping a read window onto what is already stored (D31).
 
-P00b found that the rendered DOM exposes no per-message id, so the same message
-seen twice cannot be recognised by identity. What is left is ordered sequence
-alignment over overlapping windows, and this module is the whole of it: a pure
+P00b found no stable per-message DOM attribute. A separately qualified runtime
+signal can corroborate placement, but ordinary reads still use ordered sequence
+alignment over overlapping windows. This module is the whole of it: a pure
 function from (stored tail, window) to "where does the window start being new".
 
 The rules, and why each one exists:
@@ -25,6 +25,7 @@ The rules, and why each one exists:
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -34,6 +35,8 @@ AlignStatus = Literal["ok", "baseline", "gap", "ambiguous"]
 
 # Sender, kind, normalized text, media label, quoted text; no mutable badges.
 Key = tuple[str, str, str, str, str]
+RUNTIME_ID_SOURCE = "react_current_message_v1"
+RUNTIME_ID_MAX_LENGTH = 512
 
 # \s on a str pattern is Unicode-aware, so this covers tabs, newlines and the
 # exotic spaces (non-breaking, thin, ideographic) that arrive in emoji alt text
@@ -103,6 +106,34 @@ def sequence_events(events: Iterable) -> list:
     """
     return [e for e in events if (e.get('kind') if isinstance(e, dict)
                                   else getattr(e, 'kind', None)) != 'reaction']
+
+
+def _evidence_of(event) -> dict:
+    if isinstance(event, dict):
+        try:
+            evidence = json.loads(event.get("evidence_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            return {}
+    else:
+        evidence = getattr(event, "evidence", {})
+    return evidence if isinstance(evidence, dict) else {}
+
+
+def runtime_identity_conflict(event) -> bool:
+    """Whether the collector found contradictory runtime identity evidence."""
+    evidence = _evidence_of(event)
+    return any(evidence.get(key) is True for key in (
+        "runtime_identity_conflict", "runtime_outgoing_conflict",
+        "runtime_outgoing_sender_conflict",
+    ))
+
+
+def runtime_message_id(event) -> str | None:
+    """Return only the independently qualified, page-local runtime identity."""
+    evidence = _evidence_of(event)
+    value = evidence.get("runtime_message_id") if isinstance(evidence, dict) else None
+    return (value if isinstance(value, str) and value and len(value) <= RUNTIME_ID_MAX_LENGTH
+            and evidence.get("runtime_identity_source") == RUNTIME_ID_SOURCE else None)
 
 
 @dataclass(frozen=True)
@@ -193,6 +224,67 @@ def align(stored_tail_keys: Sequence[Key], window_keys: Sequence[Key], *,
         candidates=candidates,
         reason=f"competing new-tail offsets {list(candidates)}: holding rather than guessing",
     )
+
+
+def align_events(stored, window, *, allow_containment: bool = True) -> AlignResult:
+    """Align with qualified runtime identities when they are present and consistent.
+
+    Runtime identity proves placement only.  A same-ID content change is held,
+    not treated as a DOM edit, because this optional source cannot establish an
+    edit lifecycle.
+    """
+    stored, window = list(stored), list(window)
+    if any(runtime_identity_conflict(event) for event in (*stored, *window)):
+        return AlignResult("gap", -1, reason="runtime identity conflict evidence")
+    stored_ids = [runtime_message_id(event) for event in stored]
+    window_ids = [runtime_message_id(event) for event in window]
+    if any(ids.count(value) > 1 for ids in (stored_ids, window_ids) for value in set(ids) - {None}):
+        return AlignResult("ambiguous", -1, reason="runtime identity duplicate")
+    stored_keys, window_keys = keys_of(stored), keys_of(window)
+    shared = set(stored_ids) & set(window_ids) - {None}
+    for identity in shared:
+        if stored_keys[stored_ids.index(identity)] != window_keys[window_ids.index(identity)]:
+            return AlignResult("gap", -1, reason="runtime identity content conflict")
+    aligned = align(stored_keys, window_keys, allow_containment=allow_containment)
+    if not any(stored_ids) and not any(window_ids):
+        return aligned
+    candidates = []
+    for endpoint in aligned.candidates:
+        overlap = min(endpoint, len(stored_ids))
+        start = endpoint - overlap
+        pairs = tuple(zip(stored_ids[-overlap:], window_ids[start:endpoint]))
+        matched = {left for left, right in pairs if left is not None and left == right}
+        if shared <= matched and all(left is None or right is None or left == right
+                                     for left, right in pairs):
+            candidates.append(endpoint)
+    if not candidates and aligned.candidates:
+        return AlignResult("gap", -1, reason="runtime identity ordered placement conflict")
+    if len(candidates) == 1:
+        endpoint = candidates[0]
+        return AlignResult("ok", endpoint, overlap=min(endpoint, len(stored_ids)),
+                           candidates=(endpoint,), reason="one contiguous placement")
+    if len(candidates) > 1:
+        return AlignResult("ambiguous", -1, candidates=tuple(candidates),
+                           reason=f"competing new-tail offsets {candidates}: holding rather than guessing")
+    return aligned
+
+
+def is_runtime_identity_hold(result: AlignResult) -> bool:
+    """Whether an identity conflict must not fall back to content reconciliation."""
+    return result.reason.startswith("runtime identity ")
+
+
+def runtime_backfill_pairs(stored, window, *, allow_containment: bool = True) -> list[tuple[int, str]]:
+    """Map legacy rows to qualified IDs only after independently unique content alignment."""
+    matched = align(keys_of(stored), keys_of(window), allow_containment=allow_containment)
+    if matched.status != "ok" or len(matched.candidates) != 1 or not matched.overlap:
+        return []
+    start = matched.new_start_index - matched.overlap
+    targets = stored[len(stored) - matched.overlap:]
+    observed = window[start:matched.new_start_index]
+    return [(target["id"], identity) for target, event in zip(targets, observed)
+            if target.get("id") is not None and runtime_message_id(target) is None
+            and (identity := runtime_message_id(event)) is not None]
 
 
 def trailing_unanswered_count(stored_keys: Sequence[Key], from_index: int) -> int:
