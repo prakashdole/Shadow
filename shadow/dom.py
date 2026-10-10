@@ -197,6 +197,8 @@ JS_RAW = r"""() => {
         const walk = n => {
             if (n.nodeType === 3) { out += n.nodeValue; return; }
             if (n.nodeType !== 1) return;
+            if (n.hidden || n.getAttribute('aria-hidden') === 'true'
+                    || getComputedStyle(n).display === 'none') return;
             const tag = n.tagName;
             if (tag === 'IMG') { const a = n.getAttribute('alt'); if (a) out += a; return; }
             if (tag === 'BR') { out += '\n'; return; }
@@ -325,6 +327,14 @@ JS_RAW = r"""() => {
                 const r = img.getBoundingClientRect();
                 return r.width >= 100 && r.height >= 100;
             })) return 'shared_media';
+            // Live image attachments can be an otherwise unlabelled message
+            // button. Require substantial empty-alt image evidence so avatar
+            // presentation and emoji images remain ordinary content.
+            if ([...art.querySelectorAll('[role="button"] img')].some(img => {
+                const r = img.getBoundingClientRect();
+                return !img.getAttribute('alt') && !img.closest('[role="presentation"]')
+                    && r.width >= 100 && r.height >= 100;
+            })) return 'image';
             return null;
         };
 
@@ -397,14 +407,26 @@ JS_RAW = r"""() => {
         // articles by `order` so a reply-target line can attach to the next one.
         let order = 0;
         const items = [];
+        const isSeenReceipt = text => /^seen(?: by .*| just now| \d+\s*[smhdw](?: ago)?)?$/i.test(text);
         for (const el of pane.querySelectorAll('[role="article"], [role="row"], [dir="auto"], [role="button"]')) {
             if (hiddenTree(el, pane)) continue;
             if (roots.has(el)) { items.push({order: order++, article: true, node: el}); continue; }
             if (inMessage(el)) continue;
             if ([...quoteNodes].some(q => q.contains(el))) continue;
+            if (el.getAttribute('dir') === 'auto' && !el.querySelector('[dir="auto"]')
+                    && isSeenReceipt(textOf(el))) {
+                const g = rect(el);
+                items.push({order: order++, article: false, ...g, text: textOf(el)});
+                continue;
+            }
             if (el.getAttribute('role') === 'button') {
-                if (el.querySelector('[dir="auto"], [role="article"], [role="button"]') || el.closest('[dir="auto"]')) continue;
+                if (el.querySelector('[role="article"], [role="button"]') || el.closest('[dir="auto"]')) continue;
                 const text = textOf(el);
+                if (isSeenReceipt(text)) {
+                    const g = rect(el);
+                    items.push({order: order++, article: false, ...g, text: text});
+                    continue;
+                }
                 if (!/\p{Extended_Pictographic}/u.test(text)
                         || !/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji_Modifier}\uFE0F\u200D\s\d]+$/u.test(text)) continue;
                 let target = null;
@@ -422,6 +444,7 @@ JS_RAW = r"""() => {
                             reaction: true, target: target});
                 continue;
             }
+            if (el.closest('[role="button"]')) continue;
             if (el.querySelector('[dir="auto"]') !== null) continue;   // not a leaf
             if (el.closest('[role="article"]') !== null) continue;     // inside a message
             const g = rect(el);
@@ -441,7 +464,7 @@ JS_RAW = r"""() => {
         // A receipt is visible thread chrome, not a typed message, quoted
         // message or inbox preview that happens to say "Seen".
         OUT.seen = OUT.outside.some(i => i.laid && !i.reaction
-            && /^seen(?: by .*| just now| \d+\s*[smhdw](?: ago)?)?$/i.test(i.text));
+            && isSeenReceipt(i.text));
     }
 
     const box = layout.boxes.length === 1 ? layout.boxes[0] : null;

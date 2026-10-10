@@ -944,7 +944,12 @@ class B04CompletenessTest(BrowserCase):
         self.assertFalse(result.complete)
         self.assertEqual(result.status, 'dom_unknown')
         self.assertEqual(result.detail, 'history_load_unsettled')
-        self.assertEqual(result.events, before)
+        # History collection excludes mutable standalone reaction rows while
+        # preserving per-message reaction metadata.
+        self.assertEqual(result.events, tuple(event for event in before if event.kind != 'reaction'))
+        self.assertTrue(all(event.evidence['source'] == 'outside_article'
+                            for event in before if event.kind == 'reaction'))
+        self.assertTrue(all('reactions' in event.evidence for event in result.events))
 
     async def test_history_thread_switch_cannot_return_old_thread_success(self):
         from shadow.instagram import InstagramBrowser
@@ -1280,12 +1285,17 @@ class NoLegacyTest(unittest.TestCase):
         self.adapter = (Path(__file__).resolve().parents[2]
                         / "shadow" / "instagram.py").read_text(encoding="utf-8")
 
-    def test_no_sender_memo_and_no_persistent_context(self) -> None:
+    def test_no_sender_memo_and_no_unowned_persistent_context(self) -> None:
         for name, src in (("dom.py", self.dom), ("instagram.py", self.adapter)):
             with self.subTest(module=name):
                 self.assertNotIn("__shSender", src)
-                self.assertNotIn("launch_persistent_context", src)
                 self.assertNotIn("screenshot", src.lower())
+        before_owned_profile, owned_profile = self.adapter.split(
+            "if self.profile_dir is not None:", maxsplit=1,
+        )
+        self.assertNotIn("launch_persistent_context", before_owned_profile)
+        self.assertIn("launch_persistent_context", owned_profile)
+        self.assertIn("private_destination(self.profile_dir", self.adapter)
 
     def test_the_host_guard_is_used_before_typing(self) -> None:
         self.assertIn("host_allowed(url)", self.adapter)
