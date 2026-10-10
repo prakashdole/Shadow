@@ -74,6 +74,12 @@ DOM_UNKNOWN_ALERT_SECONDS = 3600  # PROPOSED SETTING: dom_unknown_alert_window
 WORK_STATES_DUE = ("due",)
 
 PREVIEW_ONLY = ("owner_last", "reaction_to_owner")
+MESSAGE_BEARING_KINDS = frozenset({"text", "media", "unknown"})
+
+# A successful discovery reread can reopen only a hold caused before any send
+# attempt by this transient DOM status.  Every other hold needs its own explicit
+# owner action or safety-specific recovery path.
+RECOVERABLE_REREAD_HOLDS = frozenset({"reread_dom_unknown", "reread_unreadable_dom"})
 
 
 def _label_hash(label: str | None) -> str:
@@ -445,8 +451,9 @@ class Coordinator:
             # overwrite it (TRD "Owner takeover").
             self._hold(conversation_id, "manual_text", report, tier="info")
             return
-        if result.is_group:
-            self._hold(conversation_id, "group", report, tier="info")
+        if result.is_group is not False:
+            self._hold(conversation_id, "group" if result.is_group else "group_uncertain", report,
+                       tier="info")
             return
         if conversation["contact_status"] == "excluded":
             # Never read further, never assess: `/ignore` is a hard stop.
@@ -497,6 +504,31 @@ class Coordinator:
             )
         report.held += 1
 
+    @staticmethod
+    def _canonical_events_readable(events) -> bool:
+        """Only fully attributable, laid-out message events enter canonical history."""
+        messages = [event for event in events if event.kind in MESSAGE_BEARING_KINDS]
+        return bool(messages) and all(
+            event.sender in ("owner", "contact") and event.laid_out and event.kind != "unknown"
+            for event in messages
+        )
+
+    def _hold_unreadable_dom(self, conversation_id: int, report: TickReport) -> None:
+        """Block this read without persisting a per-contact owner-style pause."""
+        work = self.storage.get_work(conversation_id)
+        if work is None or work["state"] not in ("pending", "due"):
+            report.held += 1
+            return
+        self.storage.update_work(
+            conversation_id, state="held", held_reason="reread_unreadable_dom"
+        )
+        report.held += 1
+
+    def _clear_unreadable_baseline_hold(self, conversation_id: int) -> None:
+        work = self.storage.get_work(conversation_id)
+        if work and work["state"] == "held" and work["held_reason"] == "reread_unreadable_dom":
+            self.storage.update_work(conversation_id, state="idle", held_reason=None)
+
     # --- ingestion and alignment -----------------------------------
     async def _ingest(self, conversation_id: int, result: ReadResult, report: TickReport,
                       *, recover: bool = True) -> None:
@@ -512,9 +544,17 @@ class Coordinator:
             self._hold(conversation_id, "observation_budget", report, tier="action")
             return
         result = replace(result, events=tuple(A.sequence_events(result.events)))
+        if result.is_group is not False:
+            self._hold(conversation_id, "group" if result.is_group else "group_uncertain", report,
+                       tier="action")
+            return
+        if not self._canonical_events_readable(result.events):
+            self._hold_unreadable_dom(conversation_id, report)
+            return
         stored = A.sequence_events(stored)
         window = A.keys_of(result.events)
         if not conversation["first_seen_baseline_done"]:
+            self._clear_unreadable_baseline_hold(conversation_id)
             self._record_baseline(conversation_id, result, report)
             return
         tail = stored[-self.settings.align_tail_events:]
@@ -595,9 +635,88 @@ class Coordinator:
         if not result_align.is_new:
             return
         new_events = result.events[result_align.new_start_index:]
+        if not new_events:
+            self._recover_transient_reread_hold(conversation_id, result, result_align, report)
+            return
         self._store_events(conversation_id, new_events, stored)
         report.ingested += len(new_events)
         await self._after_new_events(conversation_id, new_events, report)
+
+    def _recover_transient_reread_hold(
+        self, conversation_id: int, result: ReadResult, result_align: A.AlignResult,
+        report: TickReport,
+    ) -> None:
+        """Reassess one unchanged inbound batch after a transient pre-send read.
+
+        This does not reopen identity, owner, risk, manual-composer, alignment,
+        or outbox-uncertainty holds.  In particular, a burst with any confirmed
+        or active item is not safe to regenerate.
+        """
+        conversation = self.storage.get_conversation(conversation_id)
+        work = self.storage.get_work(conversation_id)
+        runtime = self.storage.get_runtime()
+        if (
+            conversation is None
+            or work is None
+            or work["state"] != "held"
+            or work["held_reason"] not in RECOVERABLE_REREAD_HOLDS
+            or conversation["account_id"] != self.account_id
+            or runtime is not None and runtime["account_id"] != self.account_id
+            or str(result.thread_id) != str(conversation["thread_id"])
+            or result.status != "ok"
+            or result.is_group is not False
+            or bool(result.composer_text)
+            or conversation["contact_status"] not in ("known", "approved_unknown")
+            or conversation["paused_reason"] is not None
+            or self._owner_active(conversation)
+            or result_align.status != "ok"
+            or len(result_align.candidates) != 1
+            or result_align.overlap <= 0
+            or work["first_pending_seq"] is None
+        ):
+            return
+        events = self.storage.get_events(conversation_id)
+        if not any(
+            event["source"] == "dom" and event["sender"] == "contact"
+            and event["seq"] >= work["first_pending_seq"]
+            for event in events
+        ):
+            return
+        decisions = self.storage.decisions_for(conversation_id)
+        active_decision_ids = {
+            decision["id"] for decision in decisions
+            if decision["status"] in ("recorded", "awaiting_approval", "approved", "queued")
+        }
+        current_decision_ids = {
+            decision["id"] for decision in decisions
+            if decision["source_revision"] == work["inbound_revision"]
+            and decision["id"] in active_decision_ids
+        }
+        items = self.storage.outbox_items(conversation_id)
+        if active_decision_ids - current_decision_ids or any(
+            item["state"] in ("attempting", "uncertain", "held") for item in items
+        ):
+            return
+        current_items = [item for item in items if item["decision_id"] in current_decision_ids]
+        if current_decision_ids and (not current_items or any(
+                item["state"] != "pending" for item in current_items)):
+            return
+        if any(item["state"] == "pending" and item["decision_id"] not in current_decision_ids
+               for item in items):
+            return
+        self.storage.cancel_outbox_items(conversation_id, "dom_reread_recovered")
+        self.storage.cancel_decisions(
+            conversation_id, ("recorded", "awaiting_approval", "approved", "queued")
+        )
+        self.storage.update_work(
+            conversation_id,
+            inbound_revision=int(work["inbound_revision"]) + 1,
+            cancel_generation=int(work["cancel_generation"]) + 1,
+            state="pending",
+            held_reason=None,
+            due_at=None,
+        )
+        report.note(f"conversation {conversation_id}: transient DOM reread recovered")
 
     @staticmethod
     def _align_edits(stored, events):
@@ -1190,6 +1309,13 @@ class Coordinator:
         if result.is_group is not False:
             self._hold(conversation_id, "group" if result.is_group else "group_uncertain", report, tier="action")
             return False
+        if result.composer_text and not allow_composer:
+            self._hold(conversation_id, "manual_text", report, tier="info")
+            return False
+        if not self._canonical_events_readable(result.events):
+            report.note("due re-read was not safe to canonicalize")
+            self._hold_unreadable_dom(conversation_id, report)
+            return False
         stored = A.sequence_events(self.storage.get_events(conversation_id))
         result = replace(result, events=tuple(A.sequence_events(result.events)))
         result_align = A.align(A.keys_of(stored[-self.settings.align_tail_events:]), A.keys_of(result.events))
@@ -1207,9 +1333,6 @@ class Coordinator:
             return False
         if result_align.status != "ok":
             self._hold(conversation_id, f"align_{result_align.status}", report, tier="action")
-            return False
-        if result.composer_text and not allow_composer:
-            self._hold(conversation_id, "manual_text", report, tier="info")
             return False
         return True
 
