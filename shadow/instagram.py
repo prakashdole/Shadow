@@ -271,17 +271,63 @@ _JS_HISTORY_END = r"""async ([source, budget, quiet, sample, anchors]) => {
     }
 }"""
 
-# The nav profile link, if the header rendered one. Returned to Python only to
-# be compared with the configured account; never returned, never logged.
+# The authenticated owner's profile link in app chrome. Returned to Python only
+# to be compared with the configured account; never returned, never logged.
 _JS_NAV_HANDLE = r"""() => {
-    for (const a of document.querySelectorAll('a[href]')) {
-        const name = (a.getAttribute('aria-label') || a.innerText || '').trim();
-        const href = a.getAttribute('href') || '';
-        if (name.toLowerCase() === 'profile' && /^\/[^/]+\/?$/.test(href)) {
-            return href.replace(/^\/|\/$/g, '');
+    const isVisible = el => {
+        const rect = el.getBoundingClientRect(), style = getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0
+            && style.display !== 'none' && style.visibility !== 'hidden';
+    };
+    const inApplicationNavigation = el => {
+        // The compact rail itself has no semantic nav wrapper. Its owning
+        // navigation container is a bounded narrow rail containing both stable
+        // Home and Direct Inbox routes. An app-wide ancestor or sibling nav
+        // never authorizes an avatar in unrelated content.
+        for (let parent = el.parentElement; parent && parent !== document.body;
+             parent = parent.parentElement) {
+            const hrefs = [...parent.querySelectorAll('a[href]')]
+                .map(link => link.getAttribute('href'));
+            const rect = parent.getBoundingClientRect();
+            const style = getComputedStyle(parent);
+            const boundedRail = rect.left >= 0 && rect.left < 96
+                && rect.width > 0 && rect.width <= 96
+                && rect.height >= 200 && rect.bottom <= window.innerHeight
+                && style.display !== 'none' && style.visibility !== 'hidden'
+                && hrefs.length >= 3 && hrefs.length <= 8;
+            if (boundedRail && hrefs.includes('/') && hrefs.includes('/direct/inbox/')) return true;
         }
+        return false;
+    };
+    const matches = [];
+    for (const a of document.querySelectorAll('a[href]')) {
+        const href = a.getAttribute('href') || '';
+        const path = href.match(/^\/([^/]+)\/?$/);
+        if (!path || !isVisible(a)) continue;
+        const handle = path[1];
+        const rect = a.getBoundingClientRect();
+        const name = (a.getAttribute('aria-label') || a.getAttribute('title')
+            || a.innerText || '').trim().toLocaleLowerCase();
+        const explicitNavProfile = name === 'profile'
+            && !!a.closest('nav, [role="navigation"]');
+        // Instagram's current compact rail has no nav role or Profile label.
+        // Its owner avatar is explicit only when the visible avatar alt exactly
+        // names the profile path, inside the observed app-navigation structure.
+        const inContext = a.closest('[role="article"], [aria-label="Thread list"], '
+            + 'main, [role="main"], [role="dialog"]');
+        const inLeftRail = rect.left >= 0 && rect.left < 96
+            && rect.right <= Math.min(320, window.innerWidth * 0.35)
+            && rect.width <= 96 && rect.height <= 96;
+        const boundAvatar = [...a.querySelectorAll('img[alt]')].some(img => {
+            const alt = (img.getAttribute('alt') || '').toLocaleLowerCase();
+            const ownerAvatar = `${handle.toLocaleLowerCase()}'s profile picture`;
+            const ownerAvatarTypographic = `${handle.toLocaleLowerCase()}’s profile picture`;
+            return isVisible(img) && (alt === ownerAvatar || alt === ownerAvatarTypographic);
+        });
+        if (explicitNavProfile || (!inContext && inLeftRail && boundAvatar
+                                   && inApplicationNavigation(a))) matches.push(handle);
     }
-    return null;
+    return matches.length === 1 ? matches[0] : null;
 }"""
 
 
