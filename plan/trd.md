@@ -117,6 +117,21 @@ Enable foreign keys, explicit transactions, busy timeout, integrity checks, and 
 
 ## Observation identity and import
 
+Account-navigation evidence is valid only when a bounded narrow rail container
+itself contains Home and Direct/Inbox links and a unique visible own-avatar link
+has matching alt text and bare profile path, or when legacy navigation is
+explicit. The full application shell and sibling sections cannot authorize the
+owner. Missing, duplicate, wrong, ambiguous or contextual candidates hold. An
+expected account still needs explicit binding; observation must never autofill
+production account configuration.
+
+User authority to test a send does not itself identify a destination. A selected
+self recipient that lacks a verified numeric thread holds before the send helper;
+it does not establish a universal self-chat conclusion. Positive send evidence
+requires an authorized exact external recipient and the normal outbox path.
+A diagnostic persistent owned browser may remain idle-open to avoid intentional
+short-check cleanup; this is test workflow only, not a production browser policy.
+
 Never deduplicate solely by `(sender,text)`: repeated "ha" can be separate real messages. Prefer actually observed stable message IDs. P00b records whether the live DOM exposes any stable message/thread/participant identifiers; P01 designs for exactly those findings and still supports their absence. Otherwise use ordered sequence alignment over overlapping windows with sender/kind/text/media label/quoted text (D44); mutable badges, edit flags and relative ages are not matching identity. Accept only one contiguous new-tail placement, including unique full stored-block containment; competing placements hold. Distinguish a repeat at a new position from a previously seen event. Preserve ambiguity and hold if overlap cannot establish safe identity; do not assert an exactly-once guarantee without server identifiers.
 
 Qualified `react_current_message_v1` values may assist placement only when their
