@@ -43,6 +43,48 @@ class ControlTextBoundaryTest(BrowserCase):
         self.assertEqual(result.events[0].text, "visible")
         self.assertNotEqual(result.events[0].text, before.events[0].text)
 
+    async def test_structurally_hidden_nested_leaves_do_not_reenter_parsing(self):
+        await self.open_fixture("thread_1to1.html")
+        await self.page.evaluate("""() => {
+            const visible = document.querySelector('[role="article"]');
+            visible.innerHTML = '<div dir="auto">visible</div>'
+                + '<div style="display:none"><span dir="auto">INVISIBLE_CONTROL</span></div>'
+                + '<div aria-hidden="true"><span dir="auto">ARIA_HIDDEN_CONTROL</span></div>'
+                + '<div hidden><span dir="auto">HIDDEN_CONTROL</span></div>'
+                + '<blockquote style="display:none"><span dir="auto">hidden quote</span></blockquote>';
+            const media = document.createElement('div');
+            media.setAttribute('role', 'article');
+            media.innerHTML = '<div role="presentation" style="display:none">'
+                + '<span dir="auto">Message unavailable</span>'
+                + '<span dir="auto">This content may have been deleted by its owner or hidden by their privacy settings.</span>'
+                + '</div>';
+            document.querySelector('.pane').prepend(media);
+        }""")
+
+        result = await self.read()
+        self.assertEqual((result.events[0].kind, result.events[0].media_label, result.events[0].text),
+                         ("unknown", None, ""))
+        self.assertEqual(result.events[1].text, "visible")
+        self.assertIsNone(result.events[1].reply_to_text)
+
+    async def test_invisible_descendants_are_neither_text_nor_receipts(self):
+        for style in ("visibility:hidden", "visibility:collapse"):
+            with self.subTest(style=style):
+                await self.open_fixture("thread_1to1.html")
+                await self.page.evaluate("""style => {
+                    const text = document.querySelector('[role="article"] [dir="auto"]');
+                    text.innerHTML = 'visible<span style="' + style + '"> hidden text'
+                        + '<span style="visibility:visible"> restored text</span></span>';
+                    const receipt = document.createElement('div');
+                    receipt.setAttribute('dir', 'auto');
+                    receipt.innerHTML = '<span style="' + style + '">Seen</span>';
+                    document.querySelector('.pane').append(receipt);
+                }""", style)
+
+                result = await self.read()
+                self.assertEqual(result.status, "ok")
+                self.assertEqual(result.events[0].text, "visible restored text")
+
     async def test_emoji_reaction_button_with_a_text_leaf_stays_a_reaction(self):
         await self.open_fixture("thread_1to1.html")
         await self.page.evaluate("""() => {

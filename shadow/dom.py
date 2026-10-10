@@ -16,8 +16,8 @@ No Playwright import. The rules come from tests/fixtures/dom/FINDINGS.md:
 * A leaf OUTSIDE every article is never a message. It is a reaction, a day
   separator, a "replied to you" line, or a system notice.
 * Nothing is de-duplicated. Two identical "ok" messages are two events (D32).
-* There are no stable ids anywhere (D31). ``role=article`` order plus geometry
-  is all the evidence a window carries.
+* No DOM attribute provides a qualified stable ID. Optional reflected runtime
+  metadata is evidence-only and remains unavailable on any contradiction.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ import unicodedata
 from shadow.contracts import (
     InboxResult, InboxRow, ObservedEvent, ReadResult, ReadStatus,
 )
+from shadow.dom_identity import RUNTIME_MESSAGE_METADATA_JS
 
 # --- tunables (settings live in shadow/settings.py; these are structural) ---
 
@@ -173,6 +174,7 @@ const threadLayout = () => {
 # and location.pathname is used.
 JS_RAW = r"""() => {
 """ + JS_ROW_LINES + JS_THREAD_LAYOUT + r"""
+    const runtimeMessageMetadata = """ + RUNTIME_MESSAGE_METADATA_JS + r""";
     const OUT = {
         path: (window.__fixturePath !== undefined && window.__fixturePath !== null)
             ? String(window.__fixturePath)
@@ -193,22 +195,25 @@ JS_RAW = r"""() => {
 
     // innerText skips <img alt>, so an emoji-only message reads as "".
     const textOf = el => {
+        if (hiddenTree(el, pane)) return '';
         let out = '';
-        const walk = n => {
-            if (n.nodeType === 3) { out += n.nodeValue; return; }
+        const walk = (n, parentVisible = true) => {
+            if (n.nodeType === 3) { if (parentVisible) out += n.nodeValue; return; }
             if (n.nodeType !== 1) return;
+            const style = getComputedStyle(n);
             if (n.hidden || n.getAttribute('aria-hidden') === 'true'
-                    || getComputedStyle(n).display === 'none') return;
+                    || style.display === 'none') return;
+            const visible = !['hidden', 'collapse'].includes(style.visibility);
             const tag = n.tagName;
-            if (tag === 'IMG') { const a = n.getAttribute('alt'); if (a) out += a; return; }
-            if (tag === 'BR') { out += '\n'; return; }
-            for (const c of n.childNodes) walk(c);
+            if (tag === 'IMG') { const a = n.getAttribute('alt'); if (visible && a) out += a; return; }
+            if (tag === 'BR') { if (visible) out += '\n'; return; }
+            for (const c of n.childNodes) walk(c, visible);
         };
         walk(el);
         return out.replace(/\s*\n\s*/g, ' ').trim();
     };
     const leavesOf = root => [...root.querySelectorAll('[dir="auto"]')]
-        .filter(el => el.querySelector('[dir="auto"]') === null);
+        .filter(el => el.querySelector('[dir="auto"]') === null && !hiddenTree(el, pane));
     const quoteNodes = new Set();
     const rect = el => {
         const r = el.getBoundingClientRect();
@@ -340,6 +345,8 @@ JS_RAW = r"""() => {
 
         for (const art of profile.roots) {
             const g = rect(art);
+            let runtime = null;
+            try { runtime = runtimeMessageMetadata(art); } catch (_) { runtime = null; }
             if (!nodes.keys.has(art)) nodes.keys.set(art, nodes.epoch + ':' + (++nodes.next));
             const labelNodes = (art.getAttribute('aria-labelledby') || '').split(/\s+/)
                 .map(id => document.getElementById(id)).filter(el => el && art.contains(el));
@@ -396,6 +403,9 @@ JS_RAW = r"""() => {
                 reply_to_text: replyTo,
                 sender_candidates: senderCandidates,
                 node_key: nodes.keys.get(art),
+                ...(runtime || {}),
+                ...(runtime?.runtime_message_id
+                    ? {runtime_identity_source: 'react_current_message_v1'} : {}),
                 // Exact separate UI marker, never a word in message/quote text.
                 edited: [...art.querySelectorAll('span, [role="status"]')].some(el =>
                     !el.closest('[dir="auto"], blockquote, [role="blockquote"]')
@@ -774,19 +784,36 @@ def _interpret_read(
             kind = "unknown"
 
         laid = bool(art.get("laid"))
+        runtime_conflict = bool(art.get('runtime_identity_conflict')
+                                or art.get('runtime_outgoing_conflict'))
         sender = "unknown"
-        basis = 'unavailable'
-        if laid and raw.get('geometry_sender_verified', raw.get('parser_profile') is None):
-            sender = "owner" if float(art.get("centre", 0.0)) > pane_mid else "contact"
-            basis = 'verified_geometry'
-        explicit = set(art.get('sender_candidates') or [])
-        if explicit:
-            if len(explicit) != 1 or 'unknown' in explicit or (sender != 'unknown' and sender not in explicit):
-                sender, basis = 'unknown', 'conflicting'
-            elif laid:
-                sender, basis = next(iter(explicit)), 'accessibility'
+        basis = 'runtime_conflicting' if runtime_conflict else 'unavailable'
+        if not runtime_conflict:
+            if laid and raw.get('geometry_sender_verified', raw.get('parser_profile') is None):
+                sender = "owner" if float(art.get("centre", 0.0)) > pane_mid else "contact"
+                basis = 'verified_geometry'
+            explicit = set(art.get('sender_candidates') or [])
+            if explicit:
+                if len(explicit) != 1 or 'unknown' in explicit or (sender != 'unknown' and sender not in explicit):
+                    sender, basis = 'unknown', 'conflicting'
+                elif laid:
+                    sender, basis = next(iter(explicit)), 'accessibility'
+
+        if (not runtime_conflict and type(art.get('runtime_outgoing')) is bool
+                and sender in ('owner', 'contact')
+                and art['runtime_outgoing'] != (sender == 'owner')):
+            sender, basis = 'unknown', 'runtime_conflicting'
+            runtime_conflict = True
 
         evidence = {"order": order, "in_article": True, 'sender_basis': basis}
+        for key in ('runtime_message_id', 'runtime_outgoing', 'runtime_timestamp_ms',
+                    'runtime_sender_fbid', 'runtime_identity_conflict',
+                    'runtime_outgoing_conflict', 'runtime_identity_source'):
+            if key in art:
+                evidence[key] = art[key]
+        if runtime_conflict and not (art.get('runtime_identity_conflict')
+                                     or art.get('runtime_outgoing_conflict')):
+            evidence['runtime_outgoing_sender_conflict'] = True
         if art.get('node_key'):
             evidence['node_key'] = art['node_key']
         if art.get("edited"):
