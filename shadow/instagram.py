@@ -769,7 +769,12 @@ class InstagramBrowser:
             return replace(result, status='dom_unknown', complete=False, detail='history_unlaid_messages')
         events = list(result.events)
         deadline = asyncio.get_running_loop().time() + self.settings.dom_read_timeout_ms / 1000
-        for _ in range(self.settings.history_max_steps):
+        # A virtualized window can expose one verified older event per scroll.
+        # Continue only far enough to satisfy this bounded request; the existing
+        # wall-clock deadline and all ambiguity/no-progress holds still apply.
+        steps = max(self.settings.history_max_steps,
+                    want - sum(e.kind in ('text', 'media', 'unknown') for e in events))
+        for _ in range(steps):
             if result.status != 'ok':
                 return result
             if anchor and alignment.align(anchor, alignment.keys_of(events)).status == 'ok':
@@ -798,7 +803,7 @@ class InstagramBrowser:
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
                                detail='history_unlaid_messages')
             if older.status != 'ok':
-                return older
+                return replace(older, events=tuple(events), complete=False)
             if settled['reason'] != 'settled':
                 return replace(result, status='dom_unknown', events=tuple(events), complete=False,
                                detail='history_load_unsettled')
@@ -825,6 +830,8 @@ class InstagramBrowser:
             events = [scoped(e, 0) if 'observation_scope' not in e.evidence else e for e in events]
             events = [replace(e, position=i) for i, e in enumerate(added + events)]
             result = replace(older, events=tuple(events), complete=False)
+        if sum(e.kind in ('text', 'media', 'unknown') for e in events) >= want:
+            return replace(result, events=tuple(events), detail='history_count_reached')
         return replace(result, status='dom_unknown', complete=False, detail='history_step_budget_exhausted')
 
     async def send_one(self, thread_id: str, text: str, check: SendCheck) -> SendResult:
