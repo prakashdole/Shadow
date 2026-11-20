@@ -4,8 +4,7 @@ decision producer.
 The coordinator owns these shared types. The rationale for the existing
 interfaces is recorded in plan/history/plan/decisions.md.
 
-Values mirror plan/history/plan/trd.md ("Data contracts") and the storage CHECK constraints
-in shadow/storage.py. Numbers never live here; they come from shadow.settings.
+Values mirror the storage CHECK constraints in shadow/storage.py. Numbers never live here; they come from shadow.settings.
 """
 
 from __future__ import annotations

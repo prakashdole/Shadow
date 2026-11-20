@@ -48,4 +48,4 @@ Measure which drafts the owner accepts, edits or skips. If assisted sending is p
 | Reel context | Send ordered samples and the associated chat directly to the main model. Audio and interval are experimental. | Owner-rated reel comparison in phase 3 |
 | Existing project | Keep the uv-managed Python project, local memory, voice work and owner controls. Replace the observation path incrementally. | Verify each reused contract during integration |
 
-The [product requirements](prd.md) define the owner experience. The [architecture](architecture.md) assigns responsibilities. The [TRD](trd.md) defines the data, failure and verification contracts. Earlier implementation records remain available in the.
+The [product requirements](prd.md) define the owner experience. The [architecture](architecture.md) assigns responsibilities. The [TRD](trd.md) defines the data, failure and verification contracts.

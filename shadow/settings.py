@@ -1,7 +1,6 @@
 """Settings — the single source of truth for every runtime number.
 
-The original settings table is in plan/history/plan/trd.md. Runtime
-callers should use the settings fields defined here.
+Runtime callers should use the settings fields defined here.
 """
 
 from __future__ import annotations
