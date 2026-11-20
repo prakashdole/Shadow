@@ -12,13 +12,9 @@ The existing root-level design documents describe the earlier prototype. For new
 
 This checkout has historically tracked private conversations and derived data. Ignore rules do not remove tracked files or Git history. **Do not publish this checkout or its history before completing [the privacy release gate](plan/privacy.md).** Public examples and tests must use fictional data.
 
-## Current development check
+## Testing
 
-```sh
-python test_shadow.py
-```
-
-This legacy suite currently uses local private data. It is not the future clean-clone test contract. See [testing](plan/testing.md) for that transition.
+The previous test suites were removed ahead of a replacement. See the [testing plan](plan/testing.md) for the intended coverage.
 
 ## Intended distribution
 
