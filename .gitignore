@@ -31,6 +31,8 @@ __pycache__/
 /.reticle/
 /.code-review-graph/
 /.claude/settings.local.json
+/.kiro/
+/.loop/
 /.mcp.json
 .env.*
 !.env.example
