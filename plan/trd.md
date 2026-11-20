@@ -1,215 +1,44 @@
-# Technical requirements and contracts
+# Shadow technical requirements
 
-Normative target contracts. Names below are proposed APIs to implement, not existing callable commands. SQL details may vary if invariants remain and the implementation records why.
+These contracts specify the proposed screenshot path. Field names below illustrate the information each boundary must carry. Implementations should first examine the existing Shadow types and reuse compatible ones.
 
-## Runtime and settings
+## Capture, decision and execution
 
-Python 3.11+, installed Playwright/Chromium, SQLite via `sqlite3`, Click. Keep existing dependencies where useful; a Telegram HTTP client dependency needs a recorded reason if existing/standard tools suffice. Pin a reproducible tested dependency set in P08.
-
-`SHADOW_DATA_DIR` is an absolute private writable directory, defaults outside the checkout using the OS user data location. The runtime must never silently fall back to repository data. Provider/model settings have no production default until chosen. Credentials stay in environment/private config. Timezone is explicit IANA (owner setup may choose Asia/Kolkata); persist UTC timestamps.
-
-## Settings (single source of truth)
-
-This table is the only place numeric defaults are defined. Other plan documents, prompts, tests and code refer to the setting **name**, never a copied number. Code loads them from one validated settings module; tests read the same module. Changing a value needs a test at the boundary and a [decisions.md](decisions.md) entry; values affecting qualification invalidate it (see Model integration).
-
-| Setting | Initial default | Meaning |
+| Boundary | Required information | Validation |
 | --- | --- | --- |
-| `mode` | `observe` | `observe` (read, assess, alert; never sends), `assisted` (owner approves every draft), `autonomous` (qualified routine replies send without approval). Fresh installs start in `observe`. |
-| `autonomy_scope` | `none` | `none`, owner-listed contacts, or `known` (all bound, non-excluded contacts). Unknown contacts are never in scope. |
-| `active_hours` | required at setup | Owner's waking window in the configured timezone. Outside it: no ordinary sends, drafts wait, polling uses `quiet_poll_interval`. Urgent alerts are unaffected. |
-| `reply_delay_momentum` | 15-90 s | Delay when the thread had an outbound message within `momentum_window`. |
-| `momentum_window` | 10 min | Defines an active back-and-forth. |
-| `reply_delay_cold` | owner latency profile, clipped 60 s-20 min; 2-8 min without profile | Delay for a thread that was quiet. Profile is measured from owner-authored imported timestamps by time of day and relationship; no profile means the fallback range. |
-| `coalesce_extension_max` | 300 s | Further inbound messages push the due time, but never beyond first pending event + sampled delay + this value. Then reread and form a new bounded batch. |
-| `quick_coalesce` | 3 s | Brief grouping before ordinary risk assessment; none for urgent cues. |
-| `takeover_window` | 30 min | After an owner-authored message not produced by the outbox, Shadow stops drafting in that thread for this long (risk alerts continue). `/resume <contact>` ends it early. |
-| `stale_reeval` | 30 min | Work older than this is reassessed against a fresh read, never replayed. |
-| `draft_ttl` | 60 min | Assisted draft awaiting approval expires to `held` and appears in the digest. |
-| `burst_max_items` / `bubble_max_chars` / `reply_max_chars` | 4 / 500 / 1,200 | Transport safety ceilings, not style targets. No minimum length. |
-| `send_cap_account` | 20/hour, 100/day | Autonomous + approved turns. Owner commands are counted and identified separately but share the transport cap. |
-| `send_cap_thread` | 6/hour | Per conversation. |
-| `pane_check_interval` | 15 s | In-page re-read of the already open tab. No navigation. |
-| `dom_read_timeout_ms` | 15,000 ms | Total deadline for cold DOM readiness or one requested-history collection. Timeout never proves an empty thread. |
-| `dom_settle_ms` / `dom_sample_ms` | 150 / 75 ms | Rendered-content quiet period and in-page geometry sampling. The settled steady-state read adds no wait. |
-| `history_max_steps` / `history_step_timeout_ms` | 24 / 2,000 ms | Base sequential overlapping scroll budget and per-step wait ceiling. A requested count extends the step budget to at most the larger of this base and the number of initially missing messages; every step still requires verified progress and the whole collection remains bounded by `dom_read_timeout_ms`. Restoration has a separate `history_step_timeout_ms` cleanup ceiling, verifies original rendered content, and cancels on owner input. No progress, ambiguity or a visual edge proves complete server history. |
-| `history_scroll_percent` | 80% | Maximum older-history viewport step, strictly between 0 and 100. Shorten the step to retain the oldest currently visible validated message root as an overlap anchor. Missing roots still hold; geometry never proves sequence overlap or completeness. |
-| `align_tail_events` | 200 events | Stored alignment tail and requested depth for one bounded discovery recovery. Recovery never bypasses manual, identity, group, owner or pause holds; pre-send rereads do not scroll-recover. |
-| `dom_observation_limit` / `dom_observation_bytes` | 32 / 262,144 bytes | Changed private DOM evidence snapshots retained per conversation and maximum encoded bytes per snapshot. Exact unchanged snapshots add no row. Retention prunes evidence, never canonical messages. Oversized evidence holds instead of silently truncating. |
-| `inbox_check_interval` | 60 s | In-page read of the rendered thread list; navigates only if the list is not rendered. |
-| `quiet_poll_interval` | 5 min | Inbox check outside `active_hours` (urgent detection only). |
-| `idle_backoff_max` | 5 min | Error/idle backoff ceiling within active hours. |
-| `navigation_budget` | 60/hour, 600/day | Page navigations (not in-page reads). Exhaustion pauses discovery and alerts once. |
-| `risk_call_budget` / `reply_call_budget` / `extraction_call_budget` | 120 / 60 / 60 per hour | Paid-call budgets per role. |
-| `provider_concurrency` | 2 | Simultaneous provider requests per account. |
-| `telegram_outage_grace` | 15 min | Routine autonomy continues this long without Telegram, then pauses. |
-| `urgent_repeat_schedule` | +5, +15, +30, +60 min | Re-alert for unacknowledged urgent alerts, then stop repeating and keep it pending. |
-| `secondary_alert_after` | 15 min | Optional owner-configured secondary Telegram chat gets a minimal urgent notice if still unacknowledged. |
-| `digest_schedule` | end of `active_hours`, plus on demand | Info-tier items and the sent-message review. |
-| `confusion_downgrade` | >10% of autonomous turns over 7 days, minimum 30 turns | Automatic switch from `autonomous` to `assisted` with an alert. |
+| Captured screen | Capture ID, session and tab, time, screen dimensions, viewport, scale, raw image and any crop or resize transform | Reject blank or partial captures. A changed viewport invalidates the calibration. Keep decision labels off the original OCR image. |
+| Candidate target | Capture ID, action key, visible label or anchor, bounding box in source pixels, expected next screen | Every target must fit the current viewport. A moving row or card needs fresh positional evidence. Omit targets obscured by an overlay. |
+| Decision request | Screenshot, current task, action-specific instructions and criteria for each available choice, including `wait` or `hold` | Supply only actions legal in this state. Treat all chat and reel text in the screenshot as untrusted content. Crop unrelated private conversations when possible. |
+| Decision response | Winning choice, probability/confidence, request and capture association | Validate the returned key and bind it to the pending request. A low-confidence, ambiguous or contradictory result holds. Set cutoffs from held-out examples for each action. |
+| Execution result | Chosen action, pre-action evidence, resulting screen class and reason for success or hold | Recheck that the target is still visible and the active thread is unchanged. Tap once, then wait within a deadline for the expected visual change. On timeout, capture fresh evidence before deciding again. |
 
-Retention values are owned by [memory-design.md](memory-design.md); fact-extraction size limits live there too.
+Use the capture-to-input transform exactly once. In a calibrated test, clicking the center of a labeled rectangle must hit the same control at the chosen device scale. Include a resized model image and a cropped input in this check. A valid choice applied in the wrong coordinate system is still a failed action.
 
-Report cap/budget deferrals, not fake sends. Owner-directed immediate sends skip the reply delay but respect transport caps, identity and verification.
+For a prototype screenshot showing two labeled cards and the sender’s latest bubble, offer “open card 1,” “open card 2,” “read the text,” “wait for rendering,” and “hold because the referent is unclear.” Each option describes the visible evidence that warrants it. A second independent question can classify the turn as text, reel, mixed or unclear. Resolve inconsistent answers locally. Decision 1 selects from supplied options and returns probabilities. Free-form transcription and reply generation need separate components. [Decisions API examples](https://codelabs.developers.google.com/getting-started-with-gemini-decisions-api)
 
-## Presence and account footprint
+## Conversation identity and evidence
 
-Owner read receipts are permanently disabled in the account settings (owner decision). The setup checklist records this; if a read shows receipts are visible, pause and alert. Opening a thread still clears its unread state on the owner's other devices, so every thread Shadow opened but did not answer appears in the digest. Rows whose preview alone proves they need no reply (owner-last, reaction to owner's message, attachment-only preview) are recorded from the preview without opening them. That leaves them unread on the phone; they get a digest line and are never answered.
+Bind the session to the expected account and confirm the visible conversation header after opening a row. A local contact record needs distinguishing visible evidence, such as a verified handle where available. Duplicate display names, uncertain sender direction or a missing header require a hold. A screenshot hash identifies one image only. Repeated message text cannot uniquely identify a person or event.
 
-Activity status ("Active now") will look continuous while the tab is open; the setup checklist recommends turning it off and records the owner's choice.
+The reader returns an ordered window of visible bubbles. Keep the text, sender evidence, quote relationship, media-card reference, partial-visibility status and capture ID together. When scrolling, align overlapping windows only where the match is unambiguous. Preserve adjacent identical messages. A disappeared bubble can result from scrolling or reflow. Mark observation coverage as partial and avoid inferring deletion, edits or exact timestamps from absence.
 
-Footprint rules, which bound the automation pattern but do not guarantee against enforcement:
+## Routing text and reels
 
-- One persistent tab. Steady state uses in-page reads; no reload loops, no inbox navigation per cycle, no story viewing, likes or profile browsing.
-- Every navigation counts against `navigation_budget`. Deeper history loading happens only when context is insufficient.
-- One consistent host, browser profile and network location. A data-centre IP is a known login-challenge risk; the owner must accept it explicitly in setup (see [operations.md](operations.md)).
-- Any challenge, checkpoint, unusual-login or rate-limit screen is a global pause plus urgent alert. Never automate the challenge.
+1. **Text.** Run OCR on the conversation crop and retain bounding boxes. Group lines into bubbles and attach each bubble to a speaker using visible layout and conversation context. Escalate uncertain quote boundaries, emoji or mixed-script recognition to the small vision reader with the original crop. Return an explicit unknown for unreadable text.
+2. **Reel or mixed turn.** Bind the card to the incoming message before opening it. Retain the caption, nearby text, and a private local reference linking the evidence to this draft. A local reference does not imply a platform permalink. Verify the player opened and playback advanced before treating samples as video.
+3. **Sampling experiment.** Include the first visible frame. Trial 1-, 2- and 4-second intervals on the same clips, retaining timestamps. Start with a proposed cap of 12 distinct frames per draft for the comparison. Record the elapsed interval covered and whether the reel ended, looped, stalled or exceeded the budget. A long reel may have an unseen ending. Empty, repeatedly identical or buffering frames require a partial or unavailable result.
+4. **Audio.** Stills omit spoken dialogue and soundtrack. Compare timestamped frames with a short audio-bearing clip or a verified transcript on examples whose meaning depends on speech. Mark audio availability explicitly. Test browser audio capture independently from playback. [Gemini video input guidance](https://ai.google.dev/gemini-api/docs/video-understanding)
+5. **Reply.** Give the main model the ordered recent conversation, scoped context and the associated media evidence in one request. Ground statements about dialogue and action in that evidence. If the sender’s question depends on missing media, return a hold. After leaving the player, recheck the thread before accepting further UI actions.
 
-## Owner takeover
+## Drafts, sending and recovery
 
-An owner-authored outbound event not produced by Shadow's outbox (owner replied from the phone) cancels pending drafts and outbox items for that thread and sets `owner_active_until = event time + takeover_window`. Detection happens on the next read, so a draft already submitted cannot be recalled. Risk assessment and urgent alerts continue during takeover. Composer text typed by the owner in the automation tab is a hold, as before.
+Keep the draft, contact, input revision, evidence coverage and owner decision together. The screenshot pilot ends at a saved draft. Later sending requires a separately qualified route through the existing approvals and outbox logic. At execution time, recheck account, recipient, latest inbound turn, mode, pause and owner takeover. An edit or a newer turn expires the old approval.
 
-## Data contracts
+Persist the attempt before the external action. Record delivery only with evidence of a new outgoing bubble in the intended thread that can be attributed to that attempt. If the browser or process stops between the action and confirmation, mark the outcome uncertain and reconcile before further attempts. A matching older bubble or an empty composer cannot confirm delivery.
 
-Use dataclasses plus explicit validation initially; no new validation framework required.
+## Operational requirements
 
-- `ConversationRef`: local account ID, exact platform thread ID, observed participant identifiers if available, display label, binding status/evidence. Display label is presentation, never a primary key.
-- `ReadResult.coverage`: observed count, parser profile, visual edge, requested depth,
-  collection/restoration facts; never implicit server completeness (D45).
-- Private `dom_observations`: bounded changed snapshots retaining window-local
-  metadata and unresolved relationships; never model context or inferred deletes
-  (D47). Initial event evidence is preserved separately from canonical content.
-- `event_revisions` (v11, D51): prior/current canonical text and positively
-  reobserved edit/reaction metadata. Unique aligned targets only; one bracketed
-  same-page-node edit requires unchanged unique flanks. No platform-ID claim,
-  deletion-by-absence, unsend inference or fabricated reply relationship. Content
-  changes invalidate sourced facts and pending work; original content is retained.
-  Roll back with the verified pre-v11 backup, never by dropping revision data.
-- `ObservedEvent`: local event ID, thread ID, sender (`owner|contact|unknown`), kind (`text|media|reaction|system|unknown`), text, observed UTC time, platform timestamp/ID when exposed, reply target when observed, source (`import|dom|confirmed_send`), confidence/evidence, sequence position, origin (`owner_authored|shadow_generated|unknown`).
-- `ReadResult`: `ok|empty_verified|login_required|challenge|dom_unknown|wrong_thread|ambiguous_identity`, events, observed thread/account binding, completeness flag, pane revision. Empty list alone is not a status.
-- `RiskAssessment`: schema version; `risk=none|money|commitment|distress|privacy|unsupported|uncertain`; `reason_code`; `action_hint=proceed|hold|urgent`; `signals` (subset of `confusion`, `automation_question`, `owner_needed`); evidence event IDs. Produced by the risk role for every new inbound batch. Deterministic cues are computed separately and may raise priority to `urgent` or `hold`, never lower it.
-- `ReplyDraft`: schema version; `action=reply|skip`; reason code; `messages` string list; evidence event IDs; used memory IDs. Requested only after a `proceed` assessment. `skip` requires empty messages. Unknown fields/actions or malformed JSON invalidate the whole result.
-- `FactProposal`: produced asynchronously by the extraction role after an assessed batch; never blocks or gates a reply. Limits and validation are in [memory-design.md](memory-design.md).
-- `Decision`: the coordinator's immutable record combining the assessment, optional draft, deterministic checks, mode, and final action `reply|skip|hold`. Only code writes it; no model output becomes a Decision without validation.
-- `ApprovalRequest` (assisted mode): decision ID, Telegram message ID, state `pending_approval|approved|edited|rejected|expired|superseded`, owner edit text if any. Approval never bypasses identity, pause or revalidation checks.
-- `SendResult`: outbox item ID; `confirmed|failed_before_submit|uncertain`; observed thread ID; matched event/evidence reference; error code. Browser appearance confirms only UI observation, not remote delivery/read receipt.
-- `GenerationResult`: per call, the validated output plus role, provider/model/settings, prompt/profile/schema versions, token usage when supplied, latency, finish reason, provider request ID if safe. Never persist chain-of-thought.
-
-Evidence IDs must exist in the supplied context and match that thread. A model's claimed confidence is advisory and cannot override invalid identity, unsupported content, or deterministic policy. Initial reason codes: `ordinary_reply`, `conversation_complete`, `reaction_only`, `money_request`, `commitment_request`, `distress_clear`, `distress_uncertain`, `private_information`, `unsupported_content`, `context_missing`, `identity_uncertain`, `unknown_contact`, `automation_question`, `confusion_signal`, `output_invalid`. Extend with schema version/tests, not arbitrary provider prose. Model-controlled reason codes do not replace separately computed browser/transport/takeover states.
-
-## Required persisted records
-
-| Record | Key fields and constraints |
-| --- | --- |
-| account/runtime | account binding, schema version, mode, autonomy scope, active configuration digest, pause reason, lease/process lock metadata |
-| conversations | unique `(account_id, thread_id)`, binding evidence, observed label, contact status (`known|unknown_pending|approved_unknown|excluded`), policy, `owner_active_until`, last checked time |
-| events | stable local ID, thread foreign key, source, origin (`owner_authored|owner_approved|shadow_generated|unknown`), observed/platform times; unique platform ID per thread when present |
-| conversation_work | thread unique, inbound revision, due time, first pending time, state, cancellation generation |
-| outbox | unique `(decision_id, item_index)`, thread, intended text, authority (`autonomous|owner_approved|owner_command`), revision/config digest, state, attempt/evidence timestamps |
-| decisions | immutable validated decision, source revision, versions, status, safe diagnostics |
-| approval_requests | decision foreign key, Telegram message ID, state, owner edit, timestamps |
-| facts/corrections | records in [memory-design.md](memory-design.md), scope, provenance, validity, supersession |
-| telegram_updates | unique update ID, authenticated source, accepted command, result/outbox reference |
-| alerts | dedupe key, tier (`urgent|action|info`), reason, pending/sent/acknowledged/resolved state, attempt count, next attempt, digest inclusion |
-| usage_counters | per-role calls, navigations and sends per window, for budgets and `/status` |
-| migrations/imports | schema/import version, source fingerprint, counts, quarantined rows, verification status |
-
-Enable foreign keys, explicit transactions, busy timeout, integrity checks, and a single writer. WAL is appropriate for local storage; do not put the database on an untested network filesystem. Disk-full/write failure before submission prevents sends. Private migration backup must be verified before switching authoritative storage.
-
-## Observation identity and import
-
-Account-navigation evidence is valid only when a bounded narrow rail container
-itself contains Home and Direct/Inbox links and a unique visible own-avatar link
-has matching alt text and bare profile path, or when legacy navigation is
-explicit. The full application shell and sibling sections cannot authorize the
-owner. Missing, duplicate, wrong, ambiguous or contextual candidates hold. An
-expected account still needs explicit binding; observation must never autofill
-production account configuration.
-
-User authority to test a send does not itself identify a destination. A selected
-self recipient that lacks a verified numeric thread holds before the send helper;
-it does not establish a universal self-chat conclusion. Positive send evidence
-requires an authorized exact external recipient and the normal outbox path.
-A diagnostic persistent owned browser may remain idle-open to avoid intentional
-short-check cleanup; this is test workflow only, not a production browser policy.
-
-Never deduplicate solely by `(sender,text)`: repeated "ha" can be separate real messages. Prefer actually observed stable message IDs. P00b records whether the live DOM exposes any stable message/thread/participant identifiers; P01 designs for exactly those findings and still supports their absence. Otherwise use ordered sequence alignment over overlapping windows with sender/kind/text/media label/quoted text (D44); mutable badges, edit flags and relative ages are not matching identity. Accept only one contiguous new-tail placement, including unique full stored-block containment; competing placements hold. Distinguish a repeat at a new position from a previously seen event. Preserve ambiguity and hold if overlap cannot establish safe identity; do not assert an exactly-once guarantee without server identifiers.
-
-Qualified `react_current_message_v1` values may assist placement only when their
-source is qualified, IDs are unique, full message keys are unchanged, and the
-account/thread match. Every pair of known IDs must match; a missing ID on one
-side falls back to the existing content-candidate rules, while a conflict or
-duplicate holds. Legacy backfill requires independently unique content
-alignment, writes observation evidence only, never populates `platform_msg_id`,
-does not migrate schema and never infers deletion. The same ID with changed
-content intentionally holds; an ID-less copy cannot mask it. Legacy same-node
-edits corroborate known flank IDs and never discard an identity hold; this does
-not claim general edit reconciliation. Restoration reports success only after
-all original-anchor checks and qualified shared-ID agreement pass.
-
-Preview hashes may avoid redundant discovery but cannot mark a conversation handled or identify its recipient. Exact route equality uses parsed numeric thread IDs, not substring containment. Imported folders are unbound until explicitly mapped or unambiguously corroborated; no substring/fuzzy contact match may bring another person's history into a prompt.
-
-Legacy import is read-only toward originals, idempotent by source file fingerprint and row index, with a private quarantine report for malformed rows and missing senders. It preserves original timestamps and marks unknown authorship rather than assigning uncertain generated text to the owner. It does not import old reply hashes as delivery truth. Where imported timestamps are reliable, it derives the owner latency profile used by `reply_delay_cold`; unreliable timestamps leave the fallback range in effect. P01 runs parallel validation on private copies and retains originals until owner-approved cleanup.
-
-## Outbox state machine
-
-```text
-pending -> attempting -> confirmed
-                     -> failed_before_submit
-                     -> uncertain
-pending -> cancelled  (pause/stale revision/changed policy)
-failed_before_submit -> pending  (bounded retry after fresh checks)
-uncertain -> confirmed  (unique reconciliation evidence)
-uncertain -> held       (unresolved; owner decision required)
-```
-
-Before input, persist `attempting`. A crash during/after this state is uncertain, including a timeout after Enter. Persisting `confirmed` and inserting the sent event occur in one transaction. A row count increase, incoming message, existing matching old text, or composer clearing alone is insufficient confirmation.
-
-Confirmation needs the same exact account/thread, a new outbound bubble matching intended text and ordering after the prior anchor, and no visible pending/error indication. Where the DOM exposes a stable ID, retain it. Matching must survive Unicode/linebreak normalization without collapsing distinct messages. If UI evidence cannot uniquely distinguish two identical messages, hold. Reconciliation scans a bounded current window; absence from a virtualized window is not proof of non-submission.
-
-A partial burst records only confirmed items. Stop the remaining items on failure, pause, fresh inbound, owner takeover, or manual activity. Do not resend confirmed items, automatically restart an uncertain item, or silently regenerate a whole burst. An owner-approved retry after unresolved uncertainty explicitly records possible duplication.
-
-## Operating modes
-
-- `observe`: read, assess risk, raise alerts, write the digest. Never creates outbox items except explicit owner commands.
-- `assisted`: every reply draft goes to Telegram as an `ApprovalRequest` with Send / Edit / Skip. Send enqueues the draft (`authority=owner_approved`) for `max(approval time, due time)`; Edit sends the owner's text (`owner_authored`) and records the difference as a correction candidate, offered to the owner as "make this a rule?", never auto-applied; Skip holds the turn with an optional reason. Approval triggers full revalidation: if the conversation changed since the draft, the old draft is superseded and a new one is proposed. Expired requests (`draft_ttl`) become held digest items.
-- `autonomous`: qualified routine drafts for contacts inside `autonomy_scope` send at their due time without approval; everything else behaves as `assisted`. `confusion_downgrade` returns the installation to `assisted` automatically.
-
-Mode changes are owner-only (Telegram or local CLI), persisted, and invalidate queued autonomous drafts. Unknown contacts are held in every mode until the owner approves the contact (`approved_unknown`), which permits cautious drafts but never imported relationship facts.
-
-## Coordinator and concurrency
-
-All browser navigation/read/send operations acquire one shared lock; Telegram only enqueues work. The database claim and revision check prevent two workers or duplicate updates creating two outboxes. Model work executes asynchronously or in a bounded worker thread, with bounded concurrency and timeouts; it cannot block Telegram pause processing.
-
-Due time is the latest inbound event plus a delay sampled once per pending batch (`reply_delay_momentum` or `reply_delay_cold`), extended by later inbound events up to `coalesce_extension_max`. A due time outside `active_hours` moves to the next window start plus a freshly sampled cold delay; such work is always reassessed (`stale_reeval`) before sending.
-
-Recheck pause/cancellation, mode, `active_hours`, `owner_active_until` and send caps immediately before typing and immediately before Enter, plus between bubbles. Receipt/global-pause detection precedes any manual-composer DOM hold. A pause cannot recall a message already submitted. Account/thread drift cancels input; pre-existing nonempty composer indicates manual activity and must not be overwritten. Owner activity in the DOM pauses that thread even though manual overlap is not the expected workflow.
-
-Pause state survives restart. A process crash does not automatically resume uncertain sends. For unchanged eligibility, a safe pre-submit failure may retry at most twice with backoff and fresh checks. Generation/network retries are at most two additional attempts, respect retry hints, and never include a send retry. Stale queued drafts are invalidated by model, policy, profile, or correction-version changes.
-
-## Model integration
-
-Keep a small provider function boundary accepting neutral role/content input and returning the contracts above. Capabilities declare context budget, structured-output support, supported sampling controls, timeout behaviour, and usage availability. Never assume all models at one provider support the same parameters.
-
-Three roles, each a separate call with its own prompt, schema and budget:
-
-1. **Risk** (`risk_call_budget`): runs promptly on each new inbound batch after `quick_coalesce`, with no debounce when deterministic cues fire. Small context: current batch, recent thread, relationship register, relevant corrections. Output: `RiskAssessment`. Its prompt is purely classificatory; it is never asked to be casual or funny.
-2. **Reply** (`reply_call_budget`): only after `proceed`. Full `ContextBundle`. Output: `ReplyDraft`, held until its due time.
-3. **Extraction** (`extraction_call_budget`): asynchronous, lowest priority, after assessment. Output: `FactProposal`. Its failure or budget exhaustion never delays a reply or alert.
-
-Each role is configured with one qualified model; roles may share a model. There is still no automatic fallback. Deterministic cues (keyword/pattern lists, currency and payment markers, self-harm phrases in English and Hinglish) raise priority and can force `hold`/`urgent`, but cannot decide that a remark is harmless. When the risk result is `uncertain`, one further risk call with more context is allowed within budget; otherwise hold.
-
-Native structured output when available; otherwise require exactly one JSON object and validate strictly. Do not salvage arbitrary prose into a sendable message, silently truncate unsafe arrays, or treat malformed response as an intentional skip. One bounded schema repair is permitted within the total retry budget, followed by hold on failure. Truncation/refusal/empty content are distinct failure states.
-
-Bound simultaneous provider work with `provider_concurrency`; newer revisions invalidate older responses. Budgets are tracked independently of send caps, so an inbound spam burst cannot create unlimited paid calls. When the reply or risk budget is exhausted, hold pending ordinary work and notify once; deterministic urgent alerts remain available without model calls.
-
-Switching models preserves canonical facts/history/corrections. It invalidates queued drafts and prior qualification for the new configuration digest. Context-size reductions trim by documented priority, never silently drop the current inbound event or governing policy. If mandatory context cannot fit, hold. Missing usage numbers mean unknown cost, not zero.
-
-Qualification binds, per role, the model, provider capabilities, generation settings, system/policy/schema versions and base style profile, recorded as one configuration digest (a hash; no heavier machinery in v1). Normal new conversation facts and validated low-risk scoped corrections advance a memory revision and invalidate affected drafts, but do not require a full owner-rating cycle every time. Correction validation and analogous/contrast checks are required; material global style/policy changes require renewed qualification. Every decision records both the qualified base digest and the actual memory/profile revision used, so evolving memory is auditable without freezing learning.
-
-## Live quality monitoring
-
-The risk role reports `confusion` (contact replies such as "??", "what", "who is this", "wrong chat") and `automation_question` signals on the batch following an autonomous or approved send. Either signal holds that thread, alerts the owner at `action` tier and marks the triggering decision for review. Rolling 7-day metrics: autonomous turns, approval/edit/skip rates (assisted), corrections per 100 sends, confusion signals, hold rate, alert counts per tier. `/status` and the digest report them; `confusion_downgrade` switches to `assisted` automatically.
-
-## Diagnostics and dry run
-
-Logs contain event IDs, states, timing, version hashes, and error codes; raw chat text, API tokens, contact labels, or full prompts require explicit private diagnostic capture. Dry-run reads must not type, send, view stories, mutate production facts/outbox/handled state, or create default profiles. Opening a thread still clears its unread state on the owner's devices (read receipts are off for this owner). Use a read-only database view or disposable snapshot; evidence goes to an explicitly private output path. `observe` mode is the production counterpart: it writes normal state but never sends.
+- Bound the number of actions, captures, model calls and retries per turn. Tune limits using time, memory, transferred bytes and provider usage observed on the target host. A timeout returns a reason and keeps the pending state recoverable.
+- Pause on authentication challenges, unexpected navigation or account changes. A provider outage leaves work pending. Pause and owner takeover must remain responsive during an in-flight request.
+- Keep browser session data, provider keys, raw captures and optional recordings private. Prefer temporary in-memory crops and retain diagnostics only deliberately. The default log contains timings, action names, outcomes and counts. Never log raw DMs, images, auth headers or API keys.
+- Record browser build, viewport, model ID, sampling settings and input resolution with evaluation results. Keep offline fixture scores, real API responses, browser compatibility and live-account outcomes distinguishable. Older DOM results cannot qualify screenshot actions.

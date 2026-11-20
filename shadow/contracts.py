@@ -1,12 +1,10 @@
 """Shared interfaces between the browser adapter, the coordinator and the
 decision producer.
 
-Owned by the coordinator (not by any one phase agent). Three phases build
-against these types at the same time: P02 implements `BrowserPort`, P05
-implements `DecisionPort`, and P03 calls both. Change this file only with a
-decision in plan/decisions.md, because every side depends on it.
+The coordinator owns these shared types. The rationale for the existing
+interfaces is recorded in plan/history/plan/decisions.md.
 
-Values mirror plan/trd.md ("Data contracts") and the storage CHECK constraints
+Values mirror plan/history/plan/trd.md ("Data contracts") and the storage CHECK constraints
 in shadow/storage.py. Numbers never live here; they come from shadow.settings.
 """
 

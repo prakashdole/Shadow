@@ -5,7 +5,7 @@ attribute names. Every decision - what a message is, who sent it, whether a
 thread is empty or merely unreadable - is made here in Python, so it is
 testable without a browser and so there is exactly one parser in the tree.
 
-No Playwright import. The rules come from plan/dom-findings.md:
+No Playwright import. The rules come from plan/history/plan/dom-findings.md:
 
 * A thread row is the outermost ``div[role=button]`` 60-90px tall inside
   ``[aria-label="Thread list"]``. One per thread: each live thread renders five

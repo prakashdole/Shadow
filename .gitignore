@@ -10,10 +10,11 @@ __pycache__/
 .pytest_cache/
 
 # Private artifacts: do not include these in an open-source release.
-# Already-tracked files and Git history remain private-data risks; see plan/privacy.md.
+# Already-tracked files and Git history remain private-data risks; see plan/history/plan/privacy.md.
 /data/
 /voice.json
 /personality.md
+/plan/history/personality.md
 /eval_cases.json
 /.shadow_state.json
 *.log
@@ -53,7 +54,7 @@ __pycache__/
 # P00 additions. Local tool output and capture artifacts. These rules only
 # protect new untracked files: anything already tracked or already committed
 # stays exposed, and python3 tools/privacy_audit.py still reports it. See
-# plan/privacy.md and tests/README.md.
+# plan/history/plan/privacy.md.
 /probe.json
 /drive-shots/
 /.obsidian/

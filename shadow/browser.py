@@ -1,6 +1,6 @@
 """Browser — Playwright over CDP. DOM only, no vision, no fallbacks.
 
-Three rules (see NOTES.md):
+Three rules (see plan/history/NOTES.md):
 
   1. CDP connect FAILS LOUD. The old code caught the connect error and fell
      back to a fresh persistent context with an empty profile, so it scraped

@@ -1,21 +1,7 @@
 """Settings — the single source of truth for every runtime number.
 
-Every field name below is a name from the TRD settings table
-(plan/trd.md, "Settings (single source of truth)"). tests/test_settings.py
-parses that table and fails if a name is missing here, so the two cannot
-drift. No other module may hard-code a number that belongs to a setting
-here; refer to the field or the setting name instead.
-
-Shapes:
-
-* durations are seconds (``int``)
-* ranges are ``(min, max)`` seconds
-* rates are ``(count, window_seconds)``; a field with an hourly and a daily
-  cap holds a tuple of such rates
-* ``urgent_repeat_schedule`` is a strictly increasing tuple of seconds
-
-``active_hours`` and ``timezone`` have no default: owner setup must supply
-them, and any mode other than ``observe`` refuses to start without them.
+The original settings table is in plan/history/plan/trd.md. Runtime
+callers should use the settings fields defined here.
 """
 
 from __future__ import annotations

@@ -1,73 +1,51 @@
 # Shadow implementation plan
 
-Specification version: 2.1, 2026-09-27 (post-review amendments D18-D28). Status: planned, not implemented.
+The **first milestone** is to prove that Gemini Decision 1 can choose the intended action from a saved screenshot, including when it should wait. Browser choice follows that result. The screenshot path, reel pipeline and new test suite are planned work. The repository currently contains the Python CLI, DOM observer, memory, storage and owner-control code from earlier revisions.
 
-## Read this first
+## 1. Test the Decisions API in isolation
 
-The goal is a dependable, self-hosted Instagram conversation agent whose casual English/Hinglish, humour, and relationship awareness improve through history and occasional owner corrections. Reliability and memory are part of the product, not polish after a chatbot demo.
+Prepare two separate sets of fictional or redacted screenshots. Label the visible screen, intended action, valid target and reason to hold before writing the prompt. Include a plain DM, text plus a reel, two similar cards, a reordered inbox, a loading player, an overlay and an unfamiliar layout. Keep near-identical captures from one conversation in the same split.
 
-This specification supersedes conflicting future-work guidance in the older root documents. Current source remains evidence of what exists, not proof that these requirements are implemented. User work already present in the checkout must be preserved.
+Use hand-labeled regions so a failure in screen detection cannot mask a failure in the API. Make a real request to `gemini-decision-1` with the screenshot and named choices. Record the winner, confidence, latency, failures and billable usage where available. Tune the descriptions and hold threshold on the development set, then freeze them before scoring the held-out set.
 
-## Document ownership
+**To pass**, produce a replayable fixture set, a real response for a known case and a held-out table by screen type. Count false taps and unnecessary holds separately. A confident wrong-recipient or wrong-card result blocks that action. If the API is unavailable, record the provider error and leave this gate open. A successful mock verifies only the harness.
 
-| Document | Source of truth |
-| --- | --- |
-| [prd.md](prd.md) | Product scope, owner choices, acceptance requirements |
-| [trd.md](trd.md) | Runtime contracts, state transitions, configuration |
-| [architecture.md](architecture.md) | Components, dependencies, flow, reuse decisions |
-| [memory-design.md](memory-design.md) | Conversation memory, correction learning, portable schemas |
-| [testing.md](testing.md) | Named test suites, quality thresholds, release evidence |
-| [privacy.md](privacy.md) | Private data boundary and safe publication procedure |
-| [operations.md](operations.md) | Telegram controls, installation, runtime failure handling |
-| [phases.md](phases.md) | Ordered implementation stages and completion gates |
-| [prompt.md](prompt.md) | Copyable instructions for a smaller execution model |
-| [decisions.md](decisions.md) | Accepted design decisions and subsequent reasoning |
-| [memory.md](memory.md) | Sanitized implementation checkpoint, not personal memory |
-| [rules.md](rules.md) | Non-negotiable implementation invariants |
-| [feature.md](feature.md) | Current-to-target feature mapping |
+## 2. Qualify Obscura and the target map
 
-## Execution procedure
+Use a render-enabled Obscura build at a fixed viewport. Start on a local page that reports which control actually received the click. Exercise fixed hotspots, numbered moving rows, scrolling, text entry, an overlay and a layout change between capture and click. Run this part with automatic region detection. Hand-labeled regions from phase 1 would hide runtime targeting errors.
 
-1. Give an execution model `plan/prompt.md`, naming the next incomplete phase. It must read the universal instructions and that phase's referenced documents.
-2. It inspects current source, dirty/staged work, and `plan/memory.md`; it does not trust an earlier model's completion report alone.
-3. It implements only that phase, verifies its gates, and records decisions, evidence, remaining limits, and a local stage commit when safely possible.
-4. Repeat with the next phase, or allow one execution to continue through phases while each independent gate passes. A small model's context reset uses the checkpoint rather than improvising requirements.
-5. Run the final independent review prompt only after implementation evidence is assembled. Missing credentials, chosen model, owner ratings, or controlled-live authorization remain explicit pending gates, never fabricated passes.
+Then exercise a read-only Instagram session with an appropriate test account. Check authentication survives restart, DM bubbles render legibly, a tap opens the intended thread, the reel advances across captured frames and Back restores the right conversation. Measure cold start, warm capture latency, peak memory and capture size on the intended host. Record audio availability separately.
 
-Implementation can proceed without repeated design interviews. External-account actions, destructive history changes, public release, or unavailable credentials are real activation boundaries. Automated testing cannot substitute for owner judgement of humour or prove future Instagram DOM stability.
+**To pass**, record before/after frames and verify correct targets for each supported action, including expected holds. If Obscura can render chats but only produces a reel poster, record separate chat and reel results. Browser selection stays open if it cannot support the required path. The older Playwright pipeline is historical implementation evidence.
 
-## Milestones and order
+## 3. Establish what Shadow can read
 
-- P00: publication containment, portable fixtures, baseline evidence, requirement matrix.
-- P00b: read-only live DOM discovery (identifiers, preview signals, receipts/challenge indicators).
-- P01: canonical local state, settings module, migrations, event identity, durable outbox.
-- P02: correct DOM reading and recipient verification, browser fixture harness, in-page steady state.
-- P03: safe sending, reconciliation, adaptive scheduling, active hours, takeover, modes, coordinator integration.
-- P04: authenticated Telegram controls, assisted approvals, tiered alerts and digest.
-- P05: provider-neutral risk/reply/extraction roles, contextual policy, live quality guard.
-- P06: relevant memory, correction learning, natural conversational style.
-- P07: held-out evaluation, adversarial tests, provider qualification.
-- P08: packaging, home-host deployment, hardening, recovery, resource measurements.
-- P09: controlled acceptance, assisted pilot, release preparation.
+Run local OCR on labeled chat crops. Score literal text, order, sender, quotes and the association between a card and an accompanying message. Compare OCR alone with selective use of a small vision model on the same examples. Include Hinglish, emoji, clipped bubbles, repeated text and screenshots with multiple speakers.
 
-P00b-P03 form the reliability milestone and run only in `observe`. P04-P05 complete the **assisted milestone**: the first stage the owner uses day to day, drafting replies for Send/Edit/Skip in Telegram once a model is qualified for assisted use. P06-P07 improve memory and establish quality evidence. P08-P09 deliver deployment, the assisted pilot and, after it passes, owner-scoped autonomy. Partial milestones are useful checkpoints, not launch approval. v1 scope and deferred items are listed in [prd.md](prd.md#v1-core-and-deferred-scope).
+For reels, compare 1-, 2- and 4-second intervals on the same clips. Include fast captions, a late reveal, an audio-dependent joke, a stalled player and an unavailable reel. Compare frames with a short clip containing audio when capture works. Have the owner judge the reply against the actual reel and the sender’s question. Record evidence missed, cost per turn and time to a usable draft.
 
-## Explicit defaults and unresolved activation inputs
+**To pass**, select the simplest extraction route and sampling policy that preserve the references the owner cares about. Record which cases require more evidence or a hold. Choose the small reader and main reply model from these results.
 
-- Developer-first installation; one process/owner/account; English Instagram UI initially.
-- Persistent Chromium in a dedicated profile controlled by Playwright/CDP; measure before replacing any transport.
-- SQLite through the standard library; no Redis, vector database, microservices, fine-tuning, or model router for v1.
-- One selected model per role (risk, reply, extraction; may be the same); selection is pending the owner, not hard-coded by this plan.
-- Fresh installs start in `observe`; the owner moves to `assisted`, then to `autonomous` for chosen contacts.
-- Pacing adapts to conversation momentum and the owner's measured reply latency within owner-set active hours; all numbers live in the [TRD settings table](trd.md#settings-single-source-of-truth). Timing does not imply an availability guarantee.
-- Owner read receipts are permanently off. Activity status is an owner choice made at setup.
-- Unknown contacts: held until the owner approves them, then cautious drafts only; no proactive outreach. Ambiguous identity stays paused.
-- First release handles text. Unsupported media and groups go to the digest, not invented interpretation.
-- Source and synthetic fixtures are public; archives, facts, voice data, sessions, and private evidence are not.
-- Recommended host is an always-on machine on the owner's home network; a VPS is supported but raises login-challenge risk. Hosting budget target is roughly USD 5/month excluding model API charges. Browser memory requirements must be measured before claiming it fits.
-- The original GitHub repository was observed public on 2026-09-27 with owner-identifying prompt text; see [privacy.md](privacy.md#current-release-blocker). Publication preparation treats it as already exposed.
-- Direct questions about automation must not receive a false denial. Routine replies use the owner's voice without assistant boilerplate. This is an explicit limitation relative to the requested unconditional denial rule.
+## 4. Integrate a draft-only loop
 
-## What this planning stage delivers
+Connect the qualified screen actions to Shadow’s coordinator. Reuse scoped memory, SQLite, pause, owner takeover and quality checks. Store only a draft during this phase. Exercise one complete turn from inbox through reel inspection and back to the original thread. Repeat with a new inbound message arriving during inference, an unknown contact, a model timeout and a process restart.
 
-These documents and additive ignore protection only. It does not migrate data, remove files from Git, rewrite history, choose a model, send messages, or certify production readiness. Older runtime flaws are scheduled explicitly rather than silently corrected during planning.
+**To pass**, demonstrate that the draft belongs to the right contact and current turn, contains the relevant text and media context, and can be reviewed by the owner. Stale, ambiguous or unsupported turns end with a recorded reason. Count all attempted UI actions in the replay to verify the draft loop cannot send.
+
+## 5. Evaluate assisted delivery separately
+
+Measure which drafts the owner accepts, edits or skips. If assisted sending is pursued, reconnect the existing owner approval and outbox contracts only after visual recipient binding and confirmation have passed controlled checks. Exercise pause after approval, loss of confirmation and restart after one attempt. Keep automation scoped to the owner’s approved contacts and modes.
+
+**To pass**, demonstrate that an approved fresh draft reaches the intended recipient once in the controlled case. Uncertain delivery survives restart without a duplicate. The owner decides whether evidence from an assisted pilot warrants any wider autonomy.
+
+## Decisions to carry into implementation
+
+| Topic | Current direction | When to settle it |
+| --- | --- | --- |
+| Browser interaction | Screenshots, coordinate input and post-action verification. Obscura is the first candidate. | Browser trial after the API test |
+| Target selection | Prefer a small preset action vocabulary with calibrated fixed controls and per-frame targets for moving content. | Compare targeting errors and hold rates in phases 1–2 |
+| Text extraction | Try local OCR first and a small vision model on difficult cases. | Transcript and attribution comparison in phase 3 |
+| Reel context | Send ordered samples and the associated chat directly to the main model. Audio and interval are experimental. | Owner-rated reel comparison in phase 3 |
+| Existing project | Keep the uv-managed Python project, local memory, voice work and owner controls. Replace the observation path incrementally. | Verify each reused contract during integration |
+
+The [product requirements](prd.md) define the owner experience. The [architecture](architecture.md) assigns responsibilities. The [TRD](trd.md) defines the data, failure and verification contracts. Earlier implementation records remain available in the.
