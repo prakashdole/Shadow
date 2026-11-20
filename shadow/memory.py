@@ -6,6 +6,7 @@ histories in data/people/ keep working. Do not rename these files.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -22,9 +23,21 @@ class Msg:
 
 
 def _safe(name: str) -> str:
-    """Directory name for a person. Must match the old _safe() exactly —
-    data/people/ was written by it (e.g. "Aditya_shirke_7")."""
-    return "".join(c if c.isalnum() or c in "-_." else "_" for c in name).strip("_")
+    """Directory name for a person. Must match the old _safe() for names that
+    already have a folder (e.g. "Aditya_shirke_7") or every imported history
+    stops resolving.
+
+    The one deviation: a name with NO alphanumerics sanitized to "", so
+    `PEOPLE_DIR / ""` resolved to data/people/ itself. A contact named "🌼♡"
+    had their profile.json and chat_log.jsonl written loose in the shared root,
+    where people() skipped them and the next emoji-only name would have
+    overwritten them. Those names now fall back to a hash of the original.
+    """
+    out = "".join(c if c.isalnum() or c in "-_." else "_" for c in name).strip("_")
+    if not out.strip("._"):
+        digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:12]
+        return f"person_{digest}"
+    return out
 
 
 def _dir(name: str) -> Path:
