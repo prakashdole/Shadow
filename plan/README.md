@@ -39,7 +39,7 @@ The macOS ARM64 build rendered Instagram's sign-in screen. Live DMs require an a
 uv run --locked --extra obscura python tools/obscura_login.py
 ```
 
-Open the localhost address printed by the command. Click inside Instagram's preview, enter your login there and complete any verification. When your inbox is visible, use **Save session and close viewer**. The viewer forwards inputs locally and has no model calls. Use the same command to reopen the same profile.
+Open the localhost address printed by the command. The live preview shows Obscura's actual browser viewport. Use **Inbox** and **Reels** to switch pages. If Instagram shows a sign-in form, click inside the preview, enter your login there and complete any verification. Use **Save session and close viewer** when finished. The viewer forwards inputs locally and has no model calls. Use the same command to reopen the same profile.
 
 Obscura keeps cookies and local storage under `~/Library/Application Support/Shadow/obscura-instagram`. Instagram can still expire your session. Browser session storage belongs to the open tab, and the profile has no verified persistent HTTP cache. [Obscura storage documentation](https://github.com/h4ckf0r0day/obscura/blob/main/docs/Persist-cookies-and-storage.md)
 

@@ -1,4 +1,4 @@
-"""Open a local, user-operated viewer for a persistent Obscura Instagram session."""
+"""Open a local viewer for a persistent Obscura Instagram session."""
 
 import argparse
 import fcntl
@@ -16,15 +16,16 @@ from shadow.obscura import ObscuraError, obscura
 
 WIDTH, HEIGHT = 1280, 720
 INSTAGRAM = "https://www.instagram.com"
+PAGES = {"inbox": "/direct/inbox/", "reels": "/reels/"}
 VIEWER = b"""<!doctype html>
 <meta charset="utf-8">
-<title>Shadow Instagram sign-in</title>
+<title>Shadow Obscura viewer</title>
 <style>
 body { margin: 16px; font: 16px system-ui; background: #172033; color: #f1f4f8; }
 img { display: block; max-width: 100%; height: auto; background: white; cursor: crosshair; }
 </style>
-<p>Click a field in Instagram's preview and type. Use the visible Instagram buttons to continue.</p>
-<p>When the inbox is visible, use <button id="finish">Save session and close viewer</button>.</p>
+<p><button data-page="inbox">Inbox</button> <button data-page="reels">Reels</button>
+<button id="finish">Save session and close viewer</button></p>
 <p role="status" id="status">Connecting to Obscura...</p>
 <img id="screen" width="1280" height="720" tabindex="0" alt="Interactive view of Instagram">
 <script>
@@ -43,7 +44,7 @@ async function refresh() {
         screen.src = next;
         if (frame) URL.revokeObjectURL(frame);
         frame = next;
-        statusLine.textContent = '';
+        statusLine.textContent = 'Live Obscura viewport';
     } catch {
         statusLine.textContent = 'Obscura is unavailable. Restart the viewer if the connection closed.';
     }
@@ -55,6 +56,9 @@ function input(data) {
             headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
         if (!response.ok) throw Error();
     }).catch(() => { statusLine.textContent = 'The browser did not accept that input.'; });
+}
+for (const button of document.querySelectorAll('[data-page]')) {
+    button.addEventListener('click', () => input({action: 'navigate', page: button.dataset.page}));
 }
 screen.addEventListener('click', event => {
     if (!frame) return;
@@ -87,6 +91,16 @@ document.querySelector('#finish').addEventListener('click', async event => {
 refresh();
 </script>
 """
+
+
+def navigate(browser, site_origin, page):
+    # Obscura can wait for Instagram's redirect before replying to Page.navigate.
+    timeout = browser.connection.gettimeout()
+    browser.connection.settimeout(20)
+    try:
+        browser.command("Page.navigate", url=site_origin + PAGES[page], waitUntil="domcontentloaded")
+    finally:
+        browser.connection.settimeout(timeout)
 
 
 def operate(browser, event):
@@ -167,10 +181,17 @@ def viewer(browser, site_origin):
                 if not isinstance(event, dict):
                     raise ValueError("Invalid input.")
                 with browser_lock:
-                    page = browser.command("Runtime.evaluate", expression="location.origin", returnByValue=True)
-                    allowed = page["result"].get("value") == site_origin
-                    if allowed:
-                        operate(browser, event)
+                    if event.get("action") == "navigate":
+                        destination = event.get("page")
+                        if not isinstance(destination, str) or destination not in PAGES:
+                            raise ValueError("Unknown Instagram page.")
+                        navigate(browser, site_origin, destination)
+                        allowed = True
+                    else:
+                        page = browser.command("Runtime.evaluate", expression="location.origin", returnByValue=True)
+                        allowed = page["result"].get("value") == site_origin
+                        if allowed:
+                            operate(browser, event)
             except (ValueError, TypeError):
                 self.reply(400)
             except (ObscuraError, WebSocketException, OSError):
@@ -202,14 +223,8 @@ def main():
             with obscura(args.browser, profile) as browser:
                 browser.command("Emulation.setDeviceMetricsOverride", width=WIDTH, height=HEIGHT,
                                 deviceScaleFactor=1, mobile=False)
-                # Obscura can wait for Instagram's redirect before replying to Page.navigate.
-                timeout = browser.connection.gettimeout()
-                browser.connection.settimeout(20)
-                try:
-                    browser.command("Page.navigate", url=INSTAGRAM + "/direct/inbox/")
-                finally:
-                    browser.connection.settimeout(timeout)
-                print("Open this local viewer to sign in. Type your credentials only in the viewer.", flush=True)
+                navigate(browser, INSTAGRAM, "inbox")
+                print("Open this local viewer to inspect Obscura's Instagram session.", flush=True)
                 viewer(browser, INSTAGRAM)
     except KeyboardInterrupt:
         print("\nObscura closed. The profile remains available for next time.")
