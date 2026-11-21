@@ -1,6 +1,6 @@
 # Shadow
 
-Shadow is a self-hosted assistant for one owner’s Instagram conversations. The next version will read the visible chat, interpret shared reels and draft a reply in the owner’s voice. Its first experiment uses saved screenshots. The current checkout still runs the earlier Python prototype.
+Shadow is a self-hosted assistant for one owner’s Instagram conversations. The Chromium viewer and screenshot trial are available now. The existing CLI runs the earlier Python prototype. Reading live chat, interpreting shared reels and drafting a reply in the owner’s voice are the next integration steps.
 
 | Read this | When you need to know |
 | --- | --- |
@@ -20,36 +20,22 @@ uv run --locked shadow --help
 
 The previous test suites were removed. The implementation plan defines the first replacement checks. Keep API keys in the ignored local environment. The checkout and its history contain private conversations and derived voice data.
 
-## Run the Obscura trial
+## Run the Chromium trial
 
-Use the render-enabled Obscura build. The trial starts a loopback browser session, serves a synthetic inbox and verifies what each click changed. The checked-in fixture supplies colored markers for target detection.
-
-```sh
-uv run --locked --extra obscura python tools/obscura_trial.py \
-  --browser "$HOME/.local/opt/obscura-0.2.7/obscura" --with-model
-```
-
-Use `--with-model` to score screenshots with Gemini Decision 1 using `GEMINI_API_KEY`. Omitting it exercises the browser with predetermined choices. Use `--screenshots` with a new directory to retain the synthetic frames.
-
-The macOS ARM64 build rendered Instagram's sign-in screen. Live DMs require an authenticated Obscura session. The synthetic reel moved between frames, while separate local MP4 and WebM probes failed to advance playback.
-
-## Sign in to Obscura
+Install Chromium or Chrome for Testing on the host. Shadow looks for Chromium or Chrome on PATH and can use an existing Chrome for Testing installation on macOS. Pass `--browser /path/to/chromium` or set `CHROMIUM_BINARY` to choose the executable.
 
 ```sh
-uv run --locked --extra obscura python tools/obscura_login.py
+uv run --locked --extra browser python -m tools.chromium_trial --with-model
 ```
 
-Open the localhost address printed by the command. The live preview shows Obscura's actual browser viewport. Use **Inbox** and **Reels** to switch pages. If Instagram shows a sign-in form, click inside the preview, enter your login there and complete any verification. Use **Save session and close viewer** when finished. The viewer forwards inputs locally and has no model calls. Use the same command to reopen the same profile.
+The trial serves a synthetic inbox and verifies what each screenshot-driven click changed. The fixture supplies colored markers for target detection. Omit `--with-model` to run offline. Use `--screenshots` with a new directory to save synthetic frames.
 
-Obscura keeps cookies and local storage under `~/Library/Application Support/Shadow/obscura-instagram`. Instagram can still expire your session. Browser session storage belongs to the open tab, and the profile has no verified persistent HTTP cache. [Obscura storage documentation](https://github.com/h4ckf0r0day/obscura/blob/main/docs/Persist-cookies-and-storage.md)
-
-### Sign in through Chrome on the same Mac
-
-Close the Obscura viewer first. Run the pairing helper with the path to a Chrome or Chrome for Testing executable.
+## Open the Chromium viewer
 
 ```sh
-uv run --locked --extra obscura python -m tools.obscura_pair \
-  --chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+uv run --locked --extra browser python -m tools.chromium_viewer
 ```
 
-Sign in on Instagram in the separate Chrome window within five minutes. Shadow transfers Instagram cookies from that temporary browser profile over loopback and checks the inbox route in a temporary Obscura profile before saving to the regular one. This flow uses no model calls. Instagram may reject the session in Obscura even when Chrome is signed in.
+Open the printed local address. Use **Inbox** and **Reels** to switch pages and **Save session and close viewer** to stop the browser gracefully. The viewer shows Chromium’s actual viewport and runs without model calls. On a desktop, add `--headed` to sign in through Chromium’s own window using the same profile.
+
+The profile defaults to `~/Library/Application Support/Shadow/chromium-instagram` on macOS and `${XDG_DATA_HOME:-$HOME/.local/share}/shadow/chromium-instagram` on Linux. On a server, use `--profile` to point to a private persistent volume. Chromium runs headless by default and exposes the viewer and DevTools connection on loopback. [Chrome Headless documentation](https://developer.chrome.com/docs/automation-and-testing/headless/)

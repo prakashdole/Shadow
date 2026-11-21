@@ -1,6 +1,6 @@
 # Shadow implementation plan
 
-The **first milestone** is to prove that Gemini Decision 1 can choose the intended action from a saved screenshot, including when it should wait. Browser choice follows that result. The screenshot path, reel pipeline and new test suite are planned work. The repository currently contains the Python CLI, DOM observer, memory, storage and owner-control code from earlier revisions.
+The **first milestone** is to prove that Gemini Decision 1 can choose the intended action from a saved screenshot, including when it should wait. Chromium is the browser for the screenshot path. The local browser trial is implemented, and the reel interpretation pipeline and draft-only integration remain planned. The repository currently contains the Python CLI, DOM observer, memory, storage and owner-control code from earlier revisions.
 
 ## 1. Test the Decisions API in isolation
 
@@ -10,13 +10,13 @@ Use hand-labeled regions so a failure in screen detection cannot mask a failure 
 
 **To pass**, produce a replayable fixture set, a real response for a known case and a held-out table by screen type. Count false taps and unnecessary holds separately. A confident wrong-recipient or wrong-card result blocks that action. If the API is unavailable, record the provider error and leave this gate open. A successful mock verifies only the harness.
 
-## 2. Qualify Obscura and the target map
+## 2. Qualify Chromium and the target map
 
-Use a render-enabled Obscura build at a fixed viewport. Start on a local page that reports which control actually received the click. Exercise fixed hotspots, numbered moving rows, scrolling, text entry, an overlay and a layout change between capture and click. Run this part with automatic region detection. Hand-labeled regions from phase 1 would hide runtime targeting errors.
+Use headless Chromium at a fixed viewport. Start on a local page that reports which control actually received the click. Exercise fixed hotspots, numbered moving rows, scrolling, text entry, an overlay and a layout change between capture and click. Run this part with automatic region detection. Hand-labeled regions from phase 1 would hide runtime targeting errors.
 
 Then exercise a read-only Instagram session with an appropriate test account. Check authentication survives restart, DM bubbles render legibly, a tap opens the intended thread, the reel advances across captured frames and Back restores the right conversation. Measure cold start, warm capture latency, peak memory and capture size on the intended host. Record audio availability separately.
 
-**To pass**, record before/after frames and verify correct targets for each supported action, including expected holds. If Obscura can render chats but only produces a reel poster, record separate chat and reel results. Browser selection stays open if it cannot support the required path. The older Playwright pipeline is historical implementation evidence.
+**To pass**, record before/after frames and verify correct targets for each supported action, including expected holds. Record chat rendering and reel playback separately. A visible reel poster alone does not pass the playback check. The older Playwright pipeline is historical implementation evidence.
 
 ## 3. Establish what Shadow can read
 
@@ -42,7 +42,7 @@ Measure which drafts the owner accepts, edits or skips. If assisted sending is p
 
 | Topic | Current direction | When to settle it |
 | --- | --- | --- |
-| Browser interaction | Screenshots, coordinate input and post-action verification. Obscura is the first candidate. | Browser trial after the API test |
+| Browser interaction | Screenshots, coordinate input and post-action verification. Chromium is the selected engine. | Verify on the deployment host |
 | Target selection | Prefer a small preset action vocabulary with calibrated fixed controls and per-frame targets for moving content. | Compare targeting errors and hold rates in phases 1–2 |
 | Text extraction | Use local OCR and include the original crop in the main reply request when visual context matters. | Transcript, attribution and draft comparison in phase 3 |
 | Reel context | Send captured media to a smaller multimodal model for interpretation. Give its summary and the associated chat to the main reply model. | Owner-rated reel comparison in phase 3 |

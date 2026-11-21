@@ -671,12 +671,12 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-claude = [
-    { name = "anthropic", extra = ["bedrock"] },
-]
-obscura = [
+browser = [
     { name = "pillow" },
     { name = "websocket-client" },
+]
+claude = [
+    { name = "anthropic", extra = ["bedrock"] },
 ]
 
 [package.metadata]
@@ -684,12 +684,12 @@ requires-dist = [
     { name = "anthropic", extras = ["bedrock"], marker = "extra == 'claude'", specifier = ">=0.120.0" },
     { name = "boto3", specifier = ">=1.40.0" },
     { name = "click", specifier = ">=8.1.0" },
-    { name = "pillow", marker = "extra == 'obscura'", specifier = ">=11" },
+    { name = "pillow", marker = "extra == 'browser'", specifier = ">=11" },
     { name = "playwright", specifier = ">=1.44.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "websocket-client", marker = "extra == 'obscura'", specifier = ">=1.8" },
+    { name = "websocket-client", marker = "extra == 'browser'", specifier = ">=1.8" },
 ]
-provides-extras = ["claude", "obscura"]
+provides-extras = ["claude", "browser"]
 
 [[package]]
 name = "six"

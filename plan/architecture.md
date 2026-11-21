@@ -37,7 +37,7 @@ For example, an annotated screenshot might contain a chat header, two reel cards
 
 | Component | Responsibility and reuse |
 | --- | --- |
-| Browser adapter | Obscura is the first candidate after the API trial. Exercise its render-enabled screenshot and mouse-input support directly. Verify actual login persistence, view geometry, typing and reel playback on the target machine. [Obscura protocol support](https://github.com/h4ckf0r0day/obscura#cdp-api) |
+| Browser adapter | Use headless Chromium with a persistent browser profile. Capture the fixed viewport and dispatch coordinate input through the Chrome DevTools Protocol. Verify session persistence, typing and reel playback on each deployment host. [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) |
 | Screen decision | Use the latest screenshot or a crop as the evidence in every `gemini-decision-1` request. Include the task and bounded choices as instructions. Use the winning choice and its confidence for routing. [Google Decisions API](https://blog.google/innovation-and-ai/technology/developers-tools/gemini-decisions-api/) |
 | Chat inputs | Local OCR supplies text and geometry. If a quote, emoji or layout needs visual interpretation, the main reply model receives the original chat crop with the available text. |
 | Reel understanding | A smaller multimodal model interprets the caption, frames and any available audio. It returns the gist, relevant on-screen text or speech, and gaps in the evidence. The main reply model receives that summary with the sender’s message. |

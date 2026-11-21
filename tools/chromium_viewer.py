@@ -1,7 +1,6 @@
-"""Open a local viewer for a persistent Obscura Instagram session."""
+"""Open a local viewer for a persistent Chromium Instagram session."""
 
 import argparse
-import fcntl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -11,22 +10,21 @@ from threading import Lock, Thread
 
 from websocket import WebSocketException
 
-from shadow.obscura import ObscuraError, obscura
+from shadow.chromium import HEIGHT, WIDTH, BrowserError, chromium, find_chromium, profile_path
 
 
-WIDTH, HEIGHT = 1280, 720
 INSTAGRAM = "https://www.instagram.com"
 PAGES = {"inbox": "/direct/inbox/", "reels": "/reels/"}
 VIEWER = b"""<!doctype html>
 <meta charset="utf-8">
-<title>Shadow Obscura viewer</title>
+<title>Shadow Chromium viewer</title>
 <style>
 body { margin: 16px; font: 16px system-ui; background: #172033; color: #f1f4f8; }
 img { display: block; max-width: 100%; height: auto; background: white; cursor: crosshair; }
 </style>
 <p><button data-page="inbox">Inbox</button> <button data-page="reels">Reels</button>
 <button id="finish">Save session and close viewer</button></p>
-<p role="status" id="status">Connecting to Obscura...</p>
+<p role="status" id="status">Connecting to Chromium...</p>
 <img id="screen" width="1280" height="720" tabindex="0" alt="Interactive view of Instagram">
 <script>
 const screen = document.querySelector('#screen');
@@ -44,9 +42,9 @@ async function refresh() {
         screen.src = next;
         if (frame) URL.revokeObjectURL(frame);
         frame = next;
-        statusLine.textContent = 'Live Obscura viewport';
+        statusLine.textContent = 'Live Chromium viewport';
     } catch {
-        statusLine.textContent = 'Obscura is unavailable. Restart the viewer if the connection closed.';
+        statusLine.textContent = 'Chromium is unavailable. Restart the viewer if the connection closed.';
     }
     setTimeout(refresh, 750);
 }
@@ -94,13 +92,9 @@ refresh();
 
 
 def navigate(browser, site_origin, page):
-    # Obscura can wait for Instagram's redirect before replying to Page.navigate.
-    timeout = browser.connection.gettimeout()
-    browser.connection.settimeout(20)
-    try:
-        browser.command("Page.navigate", url=site_origin + PAGES[page], waitUntil="domcontentloaded")
-    finally:
-        browser.connection.settimeout(timeout)
+    result = browser.command("Page.navigate", url=site_origin + PAGES[page])
+    if result.get("errorText"):
+        raise BrowserError("Chromium could not load the requested page.")
 
 
 def operate(browser, event):
@@ -113,7 +107,7 @@ def operate(browser, event):
     elif action == "text":
         text = event.get("value")
         if isinstance(text, str) and 0 < len(text) <= 512 and text.isprintable():
-            browser.command("Input.dispatchKeyEvent", type="char", text=text, key=text[0])
+            browser.command("Input.insertText", text=text)
             return
     elif action == "key":
         key = event.get("value")
@@ -157,7 +151,7 @@ def viewer(browser, site_origin):
                 try:
                     with browser_lock:
                         image = browser.screenshot()
-                except (ObscuraError, WebSocketException, OSError):
+                except (BrowserError, WebSocketException, OSError):
                     self.reply(502)
                 else:
                     self.reply(200, "image/png", image)
@@ -194,7 +188,7 @@ def viewer(browser, site_origin):
                             operate(browser, event)
             except (ValueError, TypeError):
                 self.reply(400)
-            except (ObscuraError, WebSocketException, OSError):
+            except (BrowserError, WebSocketException, OSError):
                 self.reply(502)
             else:
                 self.reply(204 if allowed else 403)
@@ -208,28 +202,22 @@ def viewer(browser, site_origin):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--browser", default=str(Path.home() / ".local/opt/obscura-0.2.7/obscura"))
+    parser.add_argument("--browser", help="Path to Chromium or Chrome.")
+    parser.add_argument("--profile", type=Path, default=profile_path(), help="Private Chromium user-data directory.")
+    parser.add_argument("--headed", action="store_true", help="Open a desktop browser using the same profile.")
     args = parser.parse_args()
-    profile = Path.home() / "Library/Application Support/Shadow/obscura-instagram"
     os.umask(0o077)
-    profile.mkdir(mode=0o700, parents=True, exist_ok=True)
-    profile.chmod(0o700)
     try:
-        with (profile / ".lock").open("a") as lock:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                parser.exit(1, "This Obscura profile is already open. Stop that viewer first.\n")
-            with obscura(args.browser, profile) as browser:
-                browser.command("Emulation.setDeviceMetricsOverride", width=WIDTH, height=HEIGHT,
-                                deviceScaleFactor=1, mobile=False)
-                navigate(browser, INSTAGRAM, "inbox")
-                print("Open this local viewer to inspect Obscura's Instagram session.", flush=True)
-                viewer(browser, INSTAGRAM)
+        with chromium(args.browser or find_chromium(), args.profile, headed=args.headed) as browser:
+            navigate(browser, INSTAGRAM, "inbox")
+            print("Open this local viewer to inspect Chromium's Instagram session.", flush=True)
+            viewer(browser, INSTAGRAM)
     except KeyboardInterrupt:
-        print("\nObscura closed. The profile remains available for next time.")
-    except (ObscuraError, WebSocketException, OSError):
-        parser.exit(1, "The Obscura viewer could not start or lost its browser connection.\n")
+        print("\nChromium closed. The profile remains available for next time.")
+    except BrowserError as error:
+        parser.exit(1, f"{error}\n")
+    except (WebSocketException, OSError):
+        parser.exit(1, "The Chromium viewer could not start or lost its browser connection.\n")
 
 
 if __name__ == "__main__":

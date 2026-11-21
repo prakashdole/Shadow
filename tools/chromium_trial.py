@@ -1,4 +1,4 @@
-"""Run the bounded Obscura/Decision 1 navigation trial on a synthetic inbox."""
+"""Run the bounded Chromium/Decision 1 navigation trial on a synthetic inbox."""
 
 import argparse
 from contextlib import contextmanager
@@ -15,7 +15,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from websocket import WebSocketException
 
-from shadow.obscura import ObscuraError, obscura
+from shadow.chromium import BrowserError, chromium, find_chromium
 from shadow.screen_decision import DecisionError, choose_action
 
 
@@ -40,7 +40,7 @@ def fixture_value(browser, expression):
 
 @contextmanager
 def local_fixture():
-    html = (ROOT / "tests/fixtures/obscura_inbox.html").read_bytes()
+    html = (ROOT / "tests/fixtures/browser_inbox.html").read_bytes()
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -188,7 +188,7 @@ def trial(browser, url, api_key, evidence):
     ensure(fixture_value(browser, f"innerWidth === {width} && innerHeight === {height}"),
            "Screenshot coordinates do not match this viewport.")
     browser.click(480, 373)
-    browser.command("Input.dispatchKeyEvent", type="char", text="draft", key="d")
+    browser.command("Input.insertText", text="draft")
     ensure(fixture_value(browser, "document.getElementById('composer').value") == "draft",
            "Keyboard input did not reach the fixture composer.")
     if evidence:
@@ -219,7 +219,7 @@ def trial(browser, url, api_key, evidence):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--browser", default="obscura", help="Path to the render-enabled Obscura executable.")
+    parser.add_argument("--browser", help="Path to Chromium or Chrome.")
     parser.add_argument("--with-model", action="store_true", help="Test the live API with synthetic screenshots.")
     parser.add_argument("--screenshots", type=Path, help="A new directory for synthetic screenshots.")
     args = parser.parse_args()
@@ -231,16 +231,17 @@ def main():
     if args.screenshots:
         args.screenshots.mkdir(mode=0o700)
     try:
-        with TemporaryDirectory(prefix="shadow-obscura-") as storage, local_fixture() as url:
-            with obscura(args.browser, storage, allow_private_network=True) as browser:
+        binary = args.browser or find_chromium()
+        with TemporaryDirectory(prefix="shadow-chromium-") as storage, local_fixture() as url:
+            with chromium(binary, storage) as browser:
                 trial(browser, url, api_key, args.screenshots)
-            with obscura(args.browser, storage, allow_private_network=True) as browser:
+            with chromium(binary, storage) as browser:
                 browser.command("Page.navigate", url=url)
                 wait_for(browser, "document.cookie.includes('shadow_fixture=1')",
                          "The fixture cookie did not survive browser restart.")
                 ensure(fixture_value(browser, "localStorage.getItem('shadow_fixture')") == "visited",
                        "Fixture local storage did not survive browser restart.")
-    except (DecisionError, ObscuraError, OSError, TrialError, WebSocketException) as error:
+    except (DecisionError, BrowserError, OSError, TrialError, WebSocketException) as error:
         parser.exit(status=1, message=f"Trial failed: {error}\n")
     print("PASS: screenshots, coordinate input, scroll, reel overlay, quote, reaction picker, "
           "stale targets, chat switch, draft input, viewport resize, and storage restart.")
