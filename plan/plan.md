@@ -4,7 +4,7 @@ The **first milestone** is to prove that Gemini Decision 1 can choose the intend
 
 ## 1. Test the Decisions API in isolation
 
-Prepare two separate sets of fictional or redacted screenshots. Label the visible screen, intended action, valid target and reason to hold before writing the prompt. Include a plain DM, text plus a reel, two similar cards, a reordered inbox, a loading player, an overlay and an unfamiliar layout. Keep near-identical captures from one conversation in the same split.
+Prepare two separate sets of fictional or redacted screenshots. Label the visible screen, intended action, valid target and reason to hold before writing the prompt. Include a plain DM, text plus a reel, two similar cards, a reordered inbox, a DM header with its pane still loading, a loading player, a reel overlay above the DM, a quote preview, a reaction picker and an unfamiliar layout. Keep near-identical captures from one conversation in the same split.
 
 Use hand-labeled regions so a failure in screen detection cannot mask a failure in the API. Make a real request to `gemini-decision-1` with the screenshot and named choices. Record the winner, confidence, latency, failures and billable usage where available. Tune the descriptions and hold threshold on the development set, then freeze them before scoring the held-out set.
 

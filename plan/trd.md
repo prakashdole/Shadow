@@ -16,6 +16,13 @@ Use the capture-to-input transform exactly once. In a calibrated test, clicking 
 
 For a prototype screenshot showing two labeled cards and the sender’s latest bubble, offer “open card 1,” “open card 2,” “read the text,” “wait for rendering,” and “hold because the referent is unclear.” Each option describes the visible evidence that warrants it. A second independent question can classify the turn as text, reel, mixed or unclear. Resolve inconsistent answers locally. Decision 1 selects from supplied options and returns probabilities. Free-form transcription and reply generation need separate components. [Decisions API examples](https://codelabs.developers.google.com/getting-started-with-gemini-decisions-api)
 
+## Screen readiness and message actions
+
+Classify the latest screenshot before offering an action. A visible chat header with a spinner, an unrendered message pane or a missing composer is still loading. Wait and recapture within the existing deadline. A reel overlay can leave the DM visible underneath it, so the overlay must be closed and the intended chat rechecked before drafting. Use Decision 1's screen classification as evidence and require the target and its expected screen state to agree before clicking.
+
+- **Quote a message or reel.** Bind the Reply arrow to the specific visible bubble or card. Verify the quote preview in the DM composer before inserting a draft. The quote preview and unsent text can be exercised in draft mode.
+- **React to a message or reel.** Bind the React control to the specific bubble or card. Choose an approved emoji from the visible picker and verify the reaction on that same item. Selecting the emoji publishes the reaction, so offer that action only in an enabled interaction mode. Exercise the picker and emoji choice on fixtures during draft-only testing.
+
 ## Conversation identity and evidence
 
 Bind the session to the expected account and confirm the visible conversation header after opening a row. A local contact record needs distinguishing visible evidence, such as a verified handle where available. Duplicate display names, uncertain sender direction or a missing header require a hold. A screenshot hash identifies one image only. Repeated message text cannot uniquely identify a person or event.
