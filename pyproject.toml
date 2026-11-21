@@ -15,6 +15,10 @@ dependencies = [
 [project.optional-dependencies]
 # Only needed if SHADOW_PROVIDER is switched to a Claude path.
 claude = ["anthropic[bedrock]>=0.120.0"]
+obscura = [
+    "pillow>=11",
+    "websocket-client>=1.8",
+]
 
 [project.scripts]
 shadow = "shadow.main:cli"

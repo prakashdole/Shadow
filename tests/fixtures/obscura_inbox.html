@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shadow synthetic inbox</title>
+<style>
+  body { margin: 0; font: 22px Arial, sans-serif; color: #182134; background: #f6f8fa; }
+  header { background: #23324d; color: white; padding: 20px; font-weight: bold; }
+  main { display: flex; }
+  aside { width: 320px; padding: 18px; border-right: 1px solid #d7dee8; }
+  article { padding: 25px; flex: 1; }
+  button, input { font: inherit; padding: 13px; margin: 8px 0; }
+  button { color: #192334; background: #edf2fa; border: 1px solid #b4c3d5; }
+  aside button { width: 100%; min-height: 65px; text-align: left; display: block; }
+  .pin { display: inline-block; width: 18px; height: 18px; margin-right: 60px; }
+  #modal { position: fixed; inset: 0; padding: 70px; background: #20283d; color: white; }
+  #frame { background: #4b518a; padding: 90px 24px; margin: 20px 0; }
+  #history { height: 120px; overflow: scroll; border: 1px solid #b4c3d5; }
+  #history p { padding: 12px; }
+  #reelAction button { width: 205px; }
+  @media (max-width: 900px) { aside { width: 240px; padding-left: 35px; } }
+</style>
+<body>
+<header>Messages</header>
+<main>
+  <aside id="threads">
+    <button onclick="chat('Alice')"><span class="pin" style="background:#f5048d"></span>Alice · Unread</button>
+    <button onclick="chat('Bob')"><span class="pin" style="background:#03ba26"></span>Bob</button>
+  </aside>
+  <article id="pane"><h2>Select a chat</h2></article>
+</main>
+<section id="modal" hidden>
+  <h2>Reel preview</h2>
+  <div id="frame">Synthetic reel preview</div>
+  <button onclick="closeReel()"><span class="pin" style="background:#09bdd3"></span>Close reel</button>
+</section>
+<script>
+  window.fixtureState = 'inbox';
+  const pane = document.getElementById('pane');
+  const modal = document.getElementById('modal');
+  function chat(name) {
+    document.cookie = 'shadow_fixture=1; Max-Age=3600; SameSite=Lax';
+    window.fixtureState = name;
+    pane.innerHTML = '<h2>' + name + '</h2><div id="history"><p>Earlier message</p><p>Today</p><p>Latest message</p></div>' +
+      (name === 'Alice' ?
+        '<button onclick="openReel()"><span class="pin" style="background:#f57905"></span>Open shared reel</button>' +
+        '<button onclick="quoteReel()"><span class="pin" style="background:#d63b26"></span>Reply to reel</button>' +
+        '<button onclick="reactToReel()"><span class="pin" style="background:#ac0ad6"></span>React to reel</button>' +
+        '<div id="reelAction"></div>' : '') +
+      '<p><input id="composer" aria-label="Draft message" placeholder="Message…"></p>';
+  }
+  function quoteReel() {
+    document.getElementById('reelAction').innerHTML = '<div id="quote">Replying to shared reel</div>';
+  }
+  function reactToReel() {
+    document.getElementById('reelAction').innerHTML =
+      '<button onclick="recordReaction(this.textContent)"><span class="pin" style="background:#553afa"></span>Laugh 😂</button>' +
+      '<button onclick="recordReaction(this.textContent)"><span class="pin" style="background:#99a000"></span>Heart ❤️</button>';
+  }
+  function recordReaction(reaction) {
+    window.fixtureReaction = reaction;
+    document.getElementById('reelAction').textContent = reaction;
+  }
+  let timer;
+  function openReel() {
+    window.fixtureState = 'reel';
+    modal.hidden = false;
+    let frame = 0;
+    timer = setInterval(() => {
+      document.getElementById('frame').textContent = 'Synthetic reel preview · frame ' + ++frame;
+      if (frame === 3) clearInterval(timer);
+    }, 300);
+  }
+  function closeReel() {
+    clearInterval(timer);
+    modal.hidden = true;
+    window.fixtureState = 'Alice';
+  }
+  function reorder() {
+    const threads = document.getElementById('threads');
+    threads.insertBefore(threads.lastElementChild, threads.firstElementChild);
+  }
+</script>
