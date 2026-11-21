@@ -2,12 +2,12 @@
 
 import argparse
 import fcntl
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import secrets
-from threading import Thread
+from threading import Lock, Thread
 
 from websocket import WebSocketException
 
@@ -114,8 +114,11 @@ def operate(browser, event):
 
 def viewer(browser, site_origin):
     prefix = "/" + secrets.token_urlsafe(24) + "/"
+    browser_lock = Lock()
 
     class Handler(BaseHTTPRequestHandler):
+        timeout = 5
+
         def log_message(self, *_):
             pass
 
@@ -138,7 +141,8 @@ def viewer(browser, site_origin):
                 self.reply(200, "text/html; charset=utf-8", VIEWER)
             elif self.path == prefix + "frame":
                 try:
-                    image = browser.screenshot()
+                    with browser_lock:
+                        image = browser.screenshot()
                 except (ObscuraError, WebSocketException, OSError):
                     self.reply(502)
                 else:
@@ -162,19 +166,20 @@ def viewer(browser, site_origin):
                 event = json.loads(self.rfile.read(size))
                 if not isinstance(event, dict):
                     raise ValueError("Invalid input.")
-                page = browser.command("Runtime.evaluate", expression="location.origin", returnByValue=True)
-                if page["result"].get("value") != site_origin:
-                    self.reply(403)
-                    return
-                operate(browser, event)
+                with browser_lock:
+                    page = browser.command("Runtime.evaluate", expression="location.origin", returnByValue=True)
+                    allowed = page["result"].get("value") == site_origin
+                    if allowed:
+                        operate(browser, event)
             except (ValueError, TypeError):
                 self.reply(400)
             except (ObscuraError, WebSocketException, OSError):
                 self.reply(502)
             else:
-                self.reply(204)
+                self.reply(204 if allowed else 403)
 
-    with HTTPServer(("127.0.0.1", 0), Handler) as server:
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+        server.daemon_threads = False  # Let in-flight handlers finish before closing the browser.
         host = f"127.0.0.1:{server.server_port}"
         print(f"http://{host}{prefix}", flush=True)
         server.serve_forever()
@@ -197,7 +202,13 @@ def main():
             with obscura(args.browser, profile) as browser:
                 browser.command("Emulation.setDeviceMetricsOverride", width=WIDTH, height=HEIGHT,
                                 deviceScaleFactor=1, mobile=False)
-                browser.command("Page.navigate", url=INSTAGRAM + "/direct/inbox/")
+                # Obscura can wait for Instagram's redirect before replying to Page.navigate.
+                timeout = browser.connection.gettimeout()
+                browser.connection.settimeout(20)
+                try:
+                    browser.command("Page.navigate", url=INSTAGRAM + "/direct/inbox/")
+                finally:
+                    browser.connection.settimeout(timeout)
                 print("Open this local viewer to sign in. Type your credentials only in the viewer.", flush=True)
                 viewer(browser, INSTAGRAM)
     except KeyboardInterrupt:
