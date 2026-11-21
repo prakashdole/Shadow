@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import time
 
 from dotenv import load_dotenv
@@ -211,12 +212,23 @@ def main(argv=None):
     parser.add_argument("--fixture", help="Synthetic inbox URL. Omit when using --live.")
     parser.add_argument("--live", action="store_true", help="Open the persistent Instagram profile, read-only.")
     parser.add_argument("--allow-live-model", action="store_true",
-                        help="Send the live viewport to the configured models. Off unless the project is approved for that data.")
+                        help="Process live chat content with the configured models. Use provider projects approved for that data.")
+    parser.add_argument("--thread", help="Numeric Instagram thread ID for an owner-selected old or current conversation.")
+    parser.add_argument("--resume-login", action="store_true", help="Clear a login pause after verifying a signed-in inbox.")
     parser.add_argument("--show-draft", action="store_true", help="Print the saved draft text locally.")
     parser.add_argument("--measure", action="store_true", help="Print startup, capture and memory, then exit.")
     parser.add_argument("--browser")
     parser.add_argument("--profile", type=Path)
     args = parser.parse_args(argv)
+    if args.fixture and args.live:
+        parser.error("Choose either --fixture or --live.")
+    if args.allow_live_model and not args.live:
+        parser.error("--allow-live-model requires --live.")
+    if args.thread and (not args.live or not re.fullmatch(r"[0-9]+", args.thread)):
+        parser.error("--thread requires --live and an exact numeric thread ID.")
+    if args.resume_login and (not args.live or args.allow_live_model or args.thread or args.measure):
+        parser.error("--resume-login requires a read-only --live inbox check.")
+    os.umask(0o077)
     directory = args.data_dir.expanduser().resolve()
     if directory == data_dir().resolve():
         parser.exit(2, "Refusing the observer database. Pass a separate --data-dir.\n")
@@ -234,7 +246,27 @@ def main(argv=None):
         return
     if args.live and not args.allow_live_model:
         profile = args.profile or profile_path()
-        print(json.dumps(live_probe(binary, profile)))
+        if not args.thread and not args.resume_login:
+            print(json.dumps(live_probe(binary, profile)))
+            return
+        with chromium(binary, profile) as browser:
+            url = (f"https://www.instagram.com/direct/t/{args.thread}/" if args.thread
+                   else "https://www.instagram.com/direct/inbox/")
+            browser.navigate(url)
+            image = open_png(_settle(browser, 8))
+            current = browser.page_url()
+            screen = classify(image, current)
+        report = {"screen": screen, "models_called": 0, "sends": 0, "reactions": 0}
+        if args.thread:
+            report["verified_thread"] = screen == "thread" and thread_id_of(current) == args.thread
+        elif screen == "inbox" and _kind(current) == "inbox":
+            with open_storage(directory) as storage:
+                state = storage.get_runtime() or {}
+                if state.get("account_id") == args.account and state.get("pause_reason") == "login_required":
+                    storage.set_runtime(account_id=state["account_id"], mode=state["mode"],
+                                        autonomy_scope=state["autonomy_scope"], config_digest=state["config_digest"])
+                    report["resumed"] = True
+        print(json.dumps(report))
         return
     if not args.fixture and not args.live:
         parser.error("Pass --fixture URL or --live.")
@@ -249,10 +281,13 @@ def main(argv=None):
             browser.navigate(args.fixture)
             time.sleep(0.5)
         else:
-            browser.navigate("https://www.instagram.com/direct/inbox/")
+            url = (f"https://www.instagram.com/direct/t/{args.thread}/" if args.thread
+                   else "https://www.instagram.com/direct/inbox/")
+            browser.navigate(url)
             time.sleep(2)
         result = run_turn(browser, vision, storage, account_id=args.account, now=utcnow(),
-                          primary=openai_primary(key), fallback=gemini_fallback(keys))
+                          primary=openai_primary(key), fallback=gemini_fallback(keys),
+                          expected_thread_id=args.thread)
         if args.show_draft and result.get("decision_id"):
             row = storage.decisions_for(result["conversation_id"])
             record = json.loads(row[-1]["record_json"])

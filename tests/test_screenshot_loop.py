@@ -254,6 +254,63 @@ class DraftTests(unittest.TestCase):
         self.assertEqual(result["outcome"], "stale")
         self.assertEqual(self.storage.conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0], 0)
 
+    def test_owner_reply_supersedes_old_incoming_turn(self):
+        before = [bubble(1, "left", "hi")]
+        first = self._save(before, lambda *_: (reply(), {}))
+        result = self._save(before + [bubble(2, "right", "answered")],
+                            lambda *_: self.fail("reply model called on an answered turn"))
+        self.assertEqual(result["reason"], "owner_answered")
+        rows = self.storage.decisions_for(first["conversation_id"])
+        self.assertEqual(rows[0]["status"], "superseded")
+
+    def test_replied_to_reel_is_not_reused_for_unrelated_followup(self):
+        bubbles = [bubble(1, "left", "old reel", "reel"), bubble(2, "right", "saw it"),
+                   bubble(3, "left", "kal free hai?")]
+        result = self._save(bubbles, lambda *_: (reply(), {}))
+        self.assertEqual(result["outcome"], "draft")
+
+    def test_requested_thread_is_checked_before_transcribing(self):
+        image = paint(["First message in the open conversation", "Second message in the open conversation",
+                       "Third message in the open conversation"], column="thread")
+        browser = Shots([image], url="https://www.instagram.com/direct/t/101/")
+
+        class NeverTranscribe(Vision):
+            def transcribe(self, png):
+                raise AssertionError("transcribed the wrong thread")
+
+        result = run_turn(browser, NeverTranscribe(), self.storage, account_id="acct", now=NOW,
+                          primary=lambda *_: self.fail("reply model called for the wrong thread"),
+                          fallback=None, expected_thread_id="202")
+        self.assertEqual(result["reason"], "wrong_thread")
+
+    def test_thread_switch_during_draft_discards_reply(self):
+        image = paint(["First message in the open conversation", "Second message in the open conversation",
+                       "Third message in the open conversation"], column="thread")
+        browser = Shots([image], url="https://www.instagram.com/direct/t/101/")
+
+        def primary(*_):
+            browser.url = "https://www.instagram.com/direct/t/202/"
+            return reply(), {}
+
+        result = run_turn(browser, Vision(), self.storage, account_id="acct", now=NOW,
+                          primary=primary, fallback=None)
+        self.assertEqual(result["reason"], "wrong_thread")
+        self.assertEqual(self.storage.conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0], 0)
+
+    def test_incomplete_transcript_waits_without_drafting(self):
+        image = paint(["First message in the open conversation", "Second message in the open conversation",
+                       "Third message in the open conversation"], column="thread")
+        browser = Shots([image], url="https://www.instagram.com/direct/t/101/")
+
+        class IncompleteVision(Vision):
+            def transcribe(self, png):
+                return {**super().transcribe(png), "incomplete": True}
+
+        result = run_turn(browser, IncompleteVision(), self.storage, account_id="acct", now=NOW,
+                          primary=lambda *_: self.fail("reply model called on an incomplete turn"),
+                          fallback=None)
+        self.assertEqual(result["reason"], "incomplete_transcript")
+
     def test_hold_does_not_fall_back(self):
         def primary(system, user):
             return json.dumps({"schema_version": 1, "action": "hold", "reason_code": "need_detail",
