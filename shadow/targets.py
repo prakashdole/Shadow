@@ -117,6 +117,12 @@ def _list_rows(image: Image.Image, box):
     return tall or _contrast_rows(image, box, min_height=16, max_height=70)
 
 
+def _media_blocks(image: Image.Image, box):
+    """Portrait or square cards. Taller than a text bubble, so the default band limit drops them."""
+    found = _contrast_rows(image, box, min_height=80, max_height=520, min_width=70)
+    return [block for block in found if block[3] - block[1] >= 120]
+
+
 def _blank(image: Image.Image) -> bool:
     pixels = image.convert("L").tobytes()
     sample = pixels[::16]
@@ -139,7 +145,7 @@ def classify(image: Image.Image, url: str = "") -> str:
     if len(rows) < 2 and _dark_center(image) and _contrast_rows(image, OVERLAY, max_height=70):
         return "overlay"
     thread_bands = _contrast_rows(image, thread)
-    if len(thread_bands) >= 3:
+    if len(thread_bands) >= 3 or _media_blocks(image, thread):
         return "thread"
     if "/direct/t/" in url:
         return "header_only"
@@ -157,6 +163,22 @@ def _dark_center(image: Image.Image) -> bool:
     return sum(center) / len(center) < 80
 
 
+def _top_right_close(image: Image.Image):
+    """Dim close mark on a dark player header. Flat headers produce no candidate."""
+    gray = image.convert("L")
+    values = []
+    for x in range(1080, min(gray.width, 1264)):
+        column = gray.crop((x, 46, x + 1, 74)).tobytes()
+        values.append(sum(column) / len(column))
+    if not values:
+        return None
+    peak = max(values)
+    if peak < sorted(values)[len(values) // 2] + 4:
+        return None
+    x = 1080 + values.index(peak)
+    return (max(0, x - 10), 46, min(gray.width, x + 10), 74)
+
+
 def offer(image: Image.Image, screen: str) -> list[Candidate]:
     """Actions that are legal on this screen. Empty when a click would be a guess."""
     if screen in ("blank", "header_only", "login", "unknown"):
@@ -164,9 +186,14 @@ def offer(image: Image.Image, screen: str) -> list[Candidate]:
     inbox, thread = _panels(image)
     if screen == "overlay":
         bands = _contrast_rows(image, OVERLAY, max_height=70)
-        return [Candidate(f"control-{index}", "close", box,
-                          f"Overlay control {index}, counted from the top.", "thread")
-                for index, box in enumerate(bands, start=1)]
+        controls = [Candidate(f"control-{index}", "close", box,
+                              f"Overlay control {index}, counted from the top.", "thread")
+                    for index, box in enumerate(bands, start=1)]
+        peak = _top_right_close(image)
+        if peak:
+            controls.append(Candidate("close-corner", "close", peak,
+                                      "Bright mark in the top-right of the player.", "thread"))
+        return controls
     if screen == "inbox":
         return [Candidate(f"row-{index}", "row", box,
                           f"Inbox row {index}, counted from the top.", "thread")
@@ -175,6 +202,9 @@ def offer(image: Image.Image, screen: str) -> list[Candidate]:
         cards = [Candidate(f"card-{index}", "card", box,
                            f"Thread card or control {index}, counted from the top.", "overlay")
                  for index, box in enumerate(_contrast_rows(image, thread), start=1)]
+        cards += [Candidate(f"media-{index}", "card", box,
+                            f"Shared media card {index}, counted from the largest.", "overlay")
+                  for index, box in enumerate(_media_blocks(image, thread), start=1)]
         return cards + [Candidate("scroll", "scroll", (560, 150, 900, 250),
                                   "Scroll the open conversation.", "thread")]
     return []

@@ -164,6 +164,17 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(classify(image), "inbox")
         self.assertEqual(len(offer(image, "inbox")), 2)
 
+    def test_a_large_media_block_is_a_loaded_thread(self):
+        image = Image.new("RGB", (1280, 720), "#121212")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((96, 300, 340, 348), fill="#d0d4dc")
+        draw.rectangle((96, 380, 340, 428), fill="#d0d4dc")
+        draw.rectangle((700, 140, 940, 460), fill="#d0d4dc")
+        self.assertEqual(classify(image, "https://www.instagram.com/direct/t/101/"), "thread")
+        cards = [item for item in offer(image, "thread") if item.key.startswith("media-")]
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0].expects, "overlay")
+
     def test_low_confidence_holds(self):
         image = paint(["Alice Example", "Bob Example"])
         browser = Shots([image, image])

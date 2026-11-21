@@ -41,19 +41,21 @@ uv run --locked --extra browser python -m tools.screenshot_turn \
   --live
 ```
 
-That reopens the profile, counts inbox rows, and samples the public Reels feed. It does not call a model and it does not click when more than one row is visible. `--allow-live-model` sends the viewport to Gemini and OpenAI. Leave it off unless that project is approved for the private images.
+That reopens the profile and, without a model, opens inbox rows by verified position. It records whether a text thread loaded and whether a shared media card played and closed back to the same thread. It does not read display names. `--allow-live-model` sends the viewport to Gemini and OpenAI. Leave it off unless that project is approved for the private images.
 
 ## Measured locally
 
 | Item | Result |
 | --- | --- |
-| Browser process ready | 0.455 s |
-| One 1280×720 capture | 0.131 s |
+| Browser process ready | 0.485 s |
+| One 1280×720 capture | 0.108 s |
 | Inbox pixel-stable | not within 12 s. The page keeps moving, so a turn recaptures |
-| Chrome process-tree RSS | 1,589,168 KB |
+| Chrome process-tree RSS | 1,534,304 KB |
 | Session after a full restart | inbox, not a login wall |
-| Rows on that inbox | 5. No click. Choosing one would send private pixels to Decision 1 |
-| Public Reels playback | 4 of 4 frames changed. Audio was not captured. A reel inside a DM was not opened |
+| Rows on that inbox | 5. The probe opened them by row index. Decision 1 did not see the screenshot |
+| Plain DM | row 4 opened (`acted`), 6 text bands |
+| Shared media in a DM | row 1 opened (`acted`). The player route was `p`, not `reel`. 8 frames, playback advanced, audio unavailable, close returned to the same thread |
+| Public Reels playback | 4 of 4 frames changed on an earlier read-only pass. Audio was not captured |
 | Synthetic draft | `gpt-4o-mini-2024-07-18`, 2725 ms, 246 tokens |
 | Synthetic fallback | `gemini-3.5-flash-lite`, 2674 ms, 921 tokens, after the primary transport failed |
 | Synthetic reel frames | `gemini-3.1-flash-lite`, 3521 tokens |

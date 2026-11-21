@@ -12,7 +12,7 @@ from shadow.chromium import BrowserError, chromium, find_chromium, profile_path
 from shadow.gemini_client import gemini_keys
 from shadow.model_openai import openai_api_key
 from shadow.screenshot_loop import (
-    TASK_CLOSE, TASK_REEL, TASK_ROW, LiveVision, act, classify, gemini_fallback,
+    TASK_CLOSE, TASK_NAMES, TASK_REEL, TASK_ROW, LiveVision, act, classify, gemini_fallback,
     offer, openai_primary, open_png, run_turn, sample_player, thread_id_of, utcnow,
 )
 from shadow.settings import data_dir
@@ -22,20 +22,23 @@ from shadow.storage import open_storage
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class _Top:
-    """Positional choices for a read-only probe. Not a substitute for Decision 1."""
+class _Pick:
+    """Open one verified row or card by key. This does not read display names."""
+
+    def __init__(self, key):
+        self.key = key
 
     def choose(self, png, task, choices, candidates):
-        if task == TASK_ROW and "row-1" in choices:
-            return "row-1", 0.95
-        if task == TASK_REEL:
-            cards = [item for item in candidates if item.kind == "card"]
-            if cards:
-                return cards[-1].key, 0.95
+        if task == TASK_NAMES:
+            return "unique", 0.95
+        if self.key in choices:
+            return self.key, 0.95
         if task == TASK_CLOSE:
-            controls = [item for item in candidates if item.kind == "close"]
-            if controls:
-                return controls[-1].key, 0.95
+            closes = [item for item in candidates if item.kind == "close"]
+            preferred = next((item for item in closes if item.key == "close-corner"), None)
+            chosen = preferred or (closes[-1] if closes else None)
+            if chosen:
+                return chosen.key, 0.95
         return "hold", 0.95
 
 
@@ -85,22 +88,55 @@ def _kind(url):
     return "other"
 
 
-def _reels(browser):
-    """Public reel playback only. Frames stay in memory and are not sent anywhere."""
-    try:
-        browser.navigate("https://www.instagram.com/reels/")
-    except BrowserError:
-        return {"advanced": False}
-    time.sleep(2)
-    frames = []
-    for _ in range(4):
-        try:
-            frames.append(_shot(browser))
-        except BrowserError:
+def _bucket(url):
+    path = (url or "").split("?")[0]
+    for name in ("/direct/t/", "/reel/", "/reels/", "/stories/", "/p/", "/tv/", "/direct/"):
+        if name in path:
+            return name.strip("/")
+    return "other"
+
+
+def _read_rows(browser):
+    """Open a text thread and a shared media item. No model calls and no message text."""
+    plain = None
+    played = None
+    for index in range(1, 6):
+        browser.navigate("https://www.instagram.com/direct/inbox/")
+        time.sleep(2.0)
+        image = open_png(_shot(browser))
+        screen = classify(image, browser.page_url())
+        rows = [item for item in offer(image, screen) if item.kind == "row"]
+        key = f"row-{index}"
+        if not any(item.key == key for item in rows):
             break
-        time.sleep(0.45)
-    distinct = len(set(frames))
-    return {"frames": len(frames), "distinct": distinct, "advanced": distinct >= 2, "audio": False}
+        opened = act(browser, _Pick(key), task=TASK_ROW, timeout=8, names=False)
+        origin = thread_id_of(browser.page_url())
+        deadline = time.monotonic() + 4
+        while not origin and time.monotonic() < deadline:
+            time.sleep(0.3)
+            origin = thread_id_of(browser.page_url())
+        image = open_png(_shot(browser))
+        current = classify(image, browser.page_url())
+        cards = [item for item in offer(image, "thread") if item.kind == "card"]
+        media = [item for item in cards if item.key.startswith("media-")]
+        text = [item for item in cards if item.key.startswith("card-")]
+        if plain is None and origin and current == "thread" and len(text) >= 3 and not media:
+            plain = {"row": index, "bands": len(text), "opened": opened["outcome"]}
+        if played is None and media and origin:
+            media.sort(key=lambda item: (item.box[2] - item.box[0]) * (item.box[3] - item.box[1]), reverse=True)
+            started = act(browser, _Pick(media[0].key), task=TASK_REEL, timeout=8, names=False)
+            player = _bucket(browser.page_url())
+            if player in ("p", "reel", "reels", "tv") or started["outcome"] == "acted":
+                sampled = sample_player(browser.screenshot)
+                closed = act(browser, _Pick("close-corner"), task=TASK_CLOSE, timeout=8, names=False)
+                same = thread_id_of(browser.page_url()) == origin
+                played = {"row": index, "player": player, "opened": started["outcome"],
+                          "frames": sampled["distinct"], "advanced": sampled["advanced"],
+                          "audio": sampled["audio"],
+                          "returned": closed["outcome"] == "acted" and same}
+        if plain and played:
+            break
+    return plain, played
 
 
 def live_probe(binary, profile):
@@ -130,35 +166,22 @@ def live_probe(binary, profile):
         rows = [item for item in offer(image, screen) if item.kind == "row"]
         shot = time.monotonic()
         browser.screenshot()
-        report.update(screen=screen, rows=len(rows), one_capture_s=round(time.monotonic() - shot, 3))
-        if len(rows) != 1:
+        report.update(screen=screen, rows=len(rows), one_capture_s=round(time.monotonic() - shot, 3),
+                      identity="row_index")
+        if screen != "inbox" or not rows:
             report["outcome"] = "session_only"
-            report["reason"] = "needs_decision_1_for_row"
-            report["reels"] = _reels(browser)
+            report["reason"] = screen
             return report
-        opened = act(browser, _Top(), task=TASK_ROW, timeout=8)
-        report["opened"] = opened["outcome"]
-        if opened["outcome"] != "acted":
+        plain, played = _read_rows(browser)
+        report["plain"] = plain
+        report["shared_media"] = played
+        if plain and played and played.get("advanced") and played.get("returned"):
+            report["outcome"] = "reel_sampled"
+        elif plain or played:
+            report["outcome"] = "dm_opened"
+        else:
             report["outcome"] = "session_only"
-            return report
-        thread = thread_id_of(browser.page_url())
-        report["thread"] = bool(thread)
-        cards = [item for item in offer(open_png(browser.screenshot()), "thread") if item.kind == "card"]
-        report["cards"] = len(cards)
-        if not cards:
-            report["outcome"] = "dm_opened"
-            return report
-        played = act(browser, _Top(), task=TASK_REEL, timeout=8)
-        if played["outcome"] != "acted":
-            report["outcome"] = "dm_opened"
-            report["player"] = played["reason"]
-            return report
-        sampled = sample_player(browser.screenshot)
-        closed = act(browser, _Top(), task=TASK_CLOSE, timeout=8)
-        same = thread_id_of(browser.page_url()) == thread
-        report.update(outcome="reel_sampled" if sampled["advanced"] and closed["outcome"] == "acted" and same else "dm_opened",
-                      frames=sampled["distinct"], advanced=sampled["advanced"], audio=sampled["audio"],
-                      returned=closed["outcome"] == "acted" and same)
+            report["reason"] = "no_thread"
         return report
 
 

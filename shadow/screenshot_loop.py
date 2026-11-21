@@ -338,7 +338,7 @@ def _choices(candidates):
     return choices
 
 
-def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None):
+def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None, names=True):
     """One verified click, scroll, wait, or hold. Never clicks a stale box."""
     pause = time.sleep if sleep is None else sleep
     try:
@@ -364,7 +364,7 @@ def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None):
     if not found:
         return _done(outcome="wait", reason="no_target", screen=screen, recapture=True)
     choices = _choices(found)
-    if task == TASK_ROW and sum(candidate.kind == "row" for candidate in found) >= 2:
+    if names and task == TASK_ROW and sum(candidate.kind == "row" for candidate in found) >= 2:
         try:
             verdict, confidence = vision.choose(first, TASK_NAMES, NAMES, found)
         except ProviderFailure as exc:
