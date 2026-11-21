@@ -1,0 +1,11 @@
+[Unit]
+Description=Shadow Instagram screenshot draft turn
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.local/share/shadow-release
+EnvironmentFile=%h/.config/shadow/screenshot.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.local/share/shadow-release/.venv/bin/python -m tools.screenshot_turn --data-dir %h/.local/share/shadow/screenshot-drafts --live --allow-live-model
+UMask=0077
+TimeoutStartSec=6min

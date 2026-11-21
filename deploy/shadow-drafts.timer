@@ -1,0 +1,10 @@
+[Unit]
+Description=Run a Shadow draft turn every two minutes after the last turn
+
+[Timer]
+OnActiveSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

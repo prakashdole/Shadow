@@ -41,7 +41,9 @@ uv run --locked --extra browser python -m tools.screenshot_turn \
   --live
 ```
 
-That reopens the profile and, without a model, opens inbox rows by verified position. It records whether a text thread loaded and whether a shared media card played and closed back to the same thread. It does not read display names. `--allow-live-model` sends the viewport to Gemini and OpenAI. Leave it off unless that project is approved for the private images.
+This browser-only probe reopens the profile, opens existing inbox rows by verified position, and checks whether a text thread loads and shared media plays. Opening a thread can mark it as read. The probe skips model requests.
+
+To check one old conversation, pass `--thread THREAD_ID` with the numeric ID from its Instagram URL. A redirected thread fails verification. With `--allow-live-model`, a targeted turn sends the verified conversation crop and applicable reel frames to Gemini and sends structured transcript and media context to the reply model. An untargeted turn also uses the inbox screenshot to select a visibly unread row. Gemini API projects used for private messages, including backup keys, need active Cloud Billing. [Gemini API terms](https://ai.google.dev/gemini-api/terms)
 
 ## Measured locally
 
@@ -71,15 +73,34 @@ That reopens the profile and, without a model, opens inbox rows by verified posi
 | Owner pause or takeover | the turn returns `paused` or `owner_active` |
 | HTTP 429 or a daily quota | the turn stays `pending` on the same key |
 | Primary draft transport failure | one Gemini 3.5 Flash-Lite fallback; a model `hold` is kept |
-| New message while drafting | the reply is discarded and the turn stays eligible |
-| Restart | the same revision returns the existing draft; an older revision stays `superseded` |
+| New message while drafting or changed thread | the reply is discarded |
+| Owner already answered | the old draft is superseded and the turn holds |
+| Retry after opening an unread row | its exact thread ID survives restart for up to three attempts total |
+| Restart on the same revision | the existing draft is reused |
 
-Pause the observer with `uv run --locked shadow pause` when that process is the one running. The screenshot directory is separate.
+After signing in again, run a browser-only check with `--live --resume-login` to clear a login pause for this account and data directory. Stop the timer to pause scheduled screenshot turns.
 
-## Not cleared
+## Release evidence
 
-Decision 1, transcription, and drafts were not run on the live inbox. That would send private DM pixels to Gemini and OpenAI, and those projects are not confirmed as approved for this account. The visible shared cards opened `/p/`, not `/reel/`. The public Reels feed is the reel-player evidence. Offline tests save a plain draft from ordered bubbles, and the browser fixture saves one shared-reel draft.
+The signed-in Mac session survived a restart. An old plain thread opened, and an old shared video played in Instagram's post viewer. The canonical reel URL matched the same media ID. The browser probe confirmed playback without sending chat data to a model.
 
-## Host notes
+The synthetic browser test runs a plain chat and a shared reel through Chromium, Gemini Decision 1, transcription, optional reel framing, and a saved GPT draft. It checks the stored media summary and an empty outbox. Run it with the rest of the real provider checks via `SHADOW_LIVE_PROVIDERS=1`. The Linux ARM64 host passed all 40 tests with real provider calls enabled against synthetic inputs, including the plain and reel browser-to-draft flows. A supervised Chrome smoke test and the private SSH login viewer passed on that host. Real private-message drafts still require a verified billing-enabled Gemini project and a signed-in Linux profile.
 
-A future Linux host needs Chromium, a private persistent profile directory, SQLite on local disk, the same environment variables, and a supervisor that runs one process at a time against that profile. Give the browser at least 2 GB. The profile lock is exclusive. Do not deploy from this runbook.
+## Server bring-up
+
+1. From the Mac checkout, upload the selected revision's source only. The repository also holds local data, so use the explicit paths in the archive. Choose a new release path for each revision.
+
+   ```sh
+   release=$(git rev-parse --short HEAD)
+   git archive HEAD pyproject.toml uv.lock shadow tools tests deploy |
+     ssh shadow-host "umask 077; mkdir -p ~/.local/share/shadow-releases/$release &&
+       tar -xf - -C ~/.local/share/shadow-releases/$release"
+   ```
+
+2. On `shadow-host`, enter that release and run `uv sync --locked --extra browser`, then run the checks above. Allow at least 2 GiB for Chrome. Use the non-root SSH account.
+3. Run `uv run --locked --extra browser python -m tools.chromium_viewer` in the release over SSH. It prints a private loopback URL. Open a second SSH session from the Mac with `ssh -N -L 127.0.0.1:REMOTE_PORT:127.0.0.1:REMOTE_PORT shadow-host`. Use the printed port for both ends, then open the original URL on the Mac. Sign in directly in the viewer, then choose **Save session and close viewer**. The Linux profile remains under `~/.local/share/shadow/chromium-instagram`. Use the read-only `--live` probe to verify the session after a browser restart.
+4. Put only approved provider keys and the chosen `SHADOW_ACCOUNT_ID` in `~/.config/shadow/screenshot.env` with mode `0600`. For the manual smoke test, export those variables into the test shell without echoing them. Use `--data-dir "$HOME/.local/share/shadow/screenshot-drafts" --live --allow-live-model --thread THREAD_ID` for an approved existing plain chat and an approved shared reel chat. Verify both produce the expected draft or a correct hold if the owner already answered. Check the result has zero sends and reactions.
+5. After the tests pass, point `~/.local/share/shadow-release` at the qualified release and install both files from `deploy/` into `~/.config/systemd/user/`. Run `systemctl --user daemon-reload` and start `shadow-drafts.service` once. Inspect `journalctl --user -u shadow-drafts.service` for the result.
+6. To run after logout or reboot, enable linger for the SSH user with `loginctl enable-linger "$USER"` and start `shadow-drafts.timer` with `systemctl --user enable --now shadow-drafts.timer`. The timer runs one turn two minutes after the last one exits, without overlap. Disable it with `systemctl --user disable --now shadow-drafts.timer`. Then run `systemctl --user stop shadow-drafts.service` before changing the profile or release link.
+
+SQLite and the browser profile live outside the release directory. The service uses a private umask and writes only results and identifiers to its journal. Omit `--show-draft` from scheduled work. Draft content stays in SQLite for review.

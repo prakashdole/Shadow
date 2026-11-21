@@ -46,10 +46,11 @@ class _Pick:
 
 def _rss(profile):
     import subprocess
-    marker = str(profile)
+    marker = f"--user-data-dir={Path(profile).expanduser().resolve()}"
     total = 0
     for line in subprocess.check_output(["ps", "-ax", "-o", "rss=,command="], text=True).splitlines():
-        if marker in line and "Chrome" in line:
+        executable, separator, _ = line.partition(marker)
+        if separator and any(name in executable.lower() for name in ("chrome", "chromium")):
             total += int(line.split(maxsplit=1)[0])
     return total
 
@@ -152,13 +153,14 @@ def live_probe(binary, profile):
         first = _settle(browser, 12)
         capture = round(time.monotonic() - shot, 3)
         rss = _rss(profile)
-        kind = _kind(browser.page_url())
+        first_url = browser.page_url()
+        kind = _kind(first_url)
     with chromium(binary, profile) as browser:
         browser.navigate("https://www.instagram.com/direct/inbox/")
         second = _settle(browser, 12)
         reused = _kind(browser.page_url())
         report = {"startup_s": startup, "capture_s": capture, "rss_kb": rss, "viewport": "1280x720@1",
-                  "first_screen": kind, "visual_first": classify(open_png(first)),
+                  "first_screen": kind, "visual_first": classify(open_png(first), first_url),
                   "after_restart": reused, "models_called": 0, "sends": 0, "reactions": 0,
                   "identity": "not_verified"}
         if reused == "login" or kind == "login":
@@ -242,8 +244,9 @@ def main(argv=None):
             shot = time.monotonic()
             browser.screenshot()
             capture = time.monotonic() - shot
+            rss = _rss(profile)
         print(json.dumps({"startup_s": round(startup, 3), "capture_s": round(capture, 3),
-                          "viewport": "1280x720@1"}))
+                          "rss_kb": rss, "viewport": "1280x720@1"}))
         return
     if args.live and not args.allow_live_model:
         profile = args.profile or profile_path()
