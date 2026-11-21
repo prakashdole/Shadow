@@ -6,7 +6,7 @@ The **first milestone** is to prove that Gemini Decision 1 can choose the intend
 
 Prepare two separate sets of fictional or redacted screenshots. Label the visible screen, intended action, valid target and reason to hold before writing the prompt. Include a plain DM, text plus a reel, two similar cards, a reordered inbox, a DM header with its pane still loading, a loading player, a reel overlay above the DM, a quote preview, a reaction picker and an unfamiliar layout. Keep near-identical captures from one conversation in the same split.
 
-Use hand-labeled regions so a failure in screen detection cannot mask a failure in the API. Make a real request to `gemini-decision-1` with the screenshot and named choices. Record the winner, confidence, latency, failures and billable usage where available. Tune the descriptions and hold threshold on the development set, then freeze them before scoring the held-out set.
+Use hand-labeled regions so a failure in screen detection cannot mask a failure in the API. Make a real request to `gemini-decision-1` with the screenshot as the only evidence about the screen and the named choices as instructions. Leave OCR text and copied messages out of the test. Record the winner, confidence, latency, failures and billable usage where available. Tune the descriptions and hold threshold on the development set, then freeze them before scoring the held-out set.
 
 **To pass**, produce a replayable fixture set, a real response for a known case and a held-out table by screen type. Count false taps and unnecessary holds separately. A confident wrong-recipient or wrong-card result blocks that action. If the API is unavailable, record the provider error and leave this gate open. A successful mock verifies only the harness.
 
