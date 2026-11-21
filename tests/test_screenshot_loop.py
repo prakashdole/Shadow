@@ -515,6 +515,17 @@ class FixtureTests(unittest.TestCase):
                 thread.join()
 
 
+class OutcomeTests(unittest.TestCase):
+    def test_a_post_player_does_not_count_as_a_reel(self):
+        from tools.screenshot_turn import live_outcome
+        plain = {"row": 4, "bands": 6}
+        post = {"player": "p", "advanced": True, "returned": True}
+        reel = {"player": "reel", "advanced": True, "returned": True}
+        self.assertEqual(live_outcome(plain, post), "dm_opened")
+        self.assertEqual(live_outcome(plain, reel), "reel_sampled")
+        self.assertEqual(live_outcome(None, None), "session_only")
+
+
 class OwnerTests(unittest.TestCase):
     def test_owner_takeover_holds(self):
         directory, storage = store()

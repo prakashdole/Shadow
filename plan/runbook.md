@@ -54,7 +54,7 @@ That reopens the profile and, without a model, opens inbox rows by verified posi
 | Session after a full restart | inbox, not a login wall |
 | Rows on that inbox | 5. The probe opened them by row index. Decision 1 did not see the screenshot |
 | Plain DM | row 4 opened (`acted`), 6 text bands |
-| Shared media in a DM | row 1 opened (`acted`). The player route was `p`, not `reel`. 8 frames, playback advanced, audio unavailable, close returned to the same thread |
+| Shared media in a DM | Rows 1, 2, 3, and 5, plus the top row after three list scrolls, all opened a `p` player. Playback advanced. The close returned to the same thread for row 1, row 5, and the scrolled rows. No `/reel/` route appeared |
 | Public Reels playback | 4 of 4 frames changed on an earlier read-only pass. Audio was not captured |
 | Synthetic draft | `gpt-4o-mini-2024-07-18`, 2725 ms, 246 tokens |
 | Synthetic fallback | `gemini-3.5-flash-lite`, 2674 ms, 921 tokens, after the primary transport failed |

@@ -122,7 +122,7 @@ def _read_rows(browser):
         text = [item for item in cards if item.key.startswith("card-")]
         if plain is None and origin and current == "thread" and len(text) >= 3 and not media:
             plain = {"row": index, "bands": len(text), "opened": opened["outcome"]}
-        if played is None and media and origin:
+        if media and origin and (played or {}).get("player") not in ("reel", "reels"):
             media.sort(key=lambda item: (item.box[2] - item.box[0]) * (item.box[3] - item.box[1]), reverse=True)
             started = act(browser, _Pick(media[0].key), task=TASK_REEL, timeout=8, names=False)
             player = _bucket(browser.page_url())
@@ -130,11 +130,12 @@ def _read_rows(browser):
                 sampled = sample_player(browser.screenshot)
                 closed = act(browser, _Pick("close-corner"), task=TASK_CLOSE, timeout=8, names=False)
                 same = thread_id_of(browser.page_url()) == origin
-                played = {"row": index, "player": player, "opened": started["outcome"],
-                          "frames": sampled["distinct"], "advanced": sampled["advanced"],
-                          "audio": sampled["audio"],
-                          "returned": closed["outcome"] == "acted" and same}
-        if plain and played:
+                candidate = {"row": index, "player": player, "opened": started["outcome"],
+                             "frames": sampled["distinct"], "advanced": sampled["advanced"],
+                             "audio": sampled["audio"],
+                             "returned": closed["outcome"] == "acted" and same}
+                played = _prefer(played, candidate)
+        if plain and played and played.get("player") in ("reel", "reels") and played.get("returned"):
             break
     return plain, played
 
@@ -175,14 +176,30 @@ def live_probe(binary, profile):
         plain, played = _read_rows(browser)
         report["plain"] = plain
         report["shared_media"] = played
-        if plain and played and played.get("advanced") and played.get("returned"):
-            report["outcome"] = "reel_sampled"
-        elif plain or played:
-            report["outcome"] = "dm_opened"
-        else:
-            report["outcome"] = "session_only"
+        report["outcome"] = live_outcome(plain, played)
+        if report["outcome"] == "session_only":
             report["reason"] = "no_thread"
         return report
+
+
+def _prefer(current, candidate):
+    if current is None:
+        return candidate
+    if candidate["player"] in ("reel", "reels") and candidate.get("returned"):
+        return candidate
+    if not current.get("returned") and candidate.get("returned"):
+        return candidate
+    return current
+
+
+def live_outcome(plain, played):
+    """A post viewer is not the Reels player. Only a reel route can clear that check."""
+    route = (played or {}).get("player")
+    if plain and played and played.get("advanced") and played.get("returned") and route in ("reel", "reels"):
+        return "reel_sampled"
+    if plain or played:
+        return "dm_opened"
+    return "session_only"
 
 
 def main(argv=None):
