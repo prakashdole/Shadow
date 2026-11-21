@@ -466,6 +466,19 @@ class PolicyTests(unittest.TestCase):
             generate(model="gemini-3.5-flash-lite", parts=[], keys=["a", "b"], call=quota, sleep=lambda _s: None)
         self.assertEqual(caught.exception.code, "quota")
 
+    def test_transient_server_error_retries_without_switching_keys(self):
+        calls = []
+
+        def unavailable(key):
+            calls.append(key)
+            return 503, b'{"error":{"status":"UNAVAILABLE"}}'
+
+        with self.assertRaises(ProviderFailure) as caught:
+            generate(model="gemini-3.1-flash-lite", parts=[], keys=["first", "backup"],
+                     call=unavailable, sleep=lambda _: None)
+        self.assertEqual(caught.exception.code, "provider")
+        self.assertEqual(calls, ["first", "first", "first"])
+
     def test_rejected_key_uses_the_backup(self):
         def call(key):
             if key == "old":

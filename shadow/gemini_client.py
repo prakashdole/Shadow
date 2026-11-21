@@ -69,7 +69,7 @@ def _post(model, parts, key, thinking, timeout):
             body = b""
         finally:
             exc.close()
-        raise ProviderFailure(_class_of(exc.code, body)) from None
+        return exc.code, body
     except TimeoutError:
         raise ProviderFailure("timeout") from None
     except URLError as exc:
@@ -109,7 +109,8 @@ def generate(*, model, parts, thinking=None, timeout=60, keys=None, call=None, s
                     raise last
                 if last.code == "auth":
                     break
-                if last.code in ("rate_limited", "timeout") and attempt + 1 < attempts:
+                transient = last.code in ("rate_limited", "timeout") or status in (500, 502, 503, 504)
+                if transient and attempt + 1 < attempts:
                     pause(0.5 * (2 ** attempt))
                     continue
                 raise last
