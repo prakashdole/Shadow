@@ -32,3 +32,13 @@ uv run --locked --extra obscura python tools/obscura_trial.py \
 Use `--with-model` to score screenshots with Gemini Decision 1 using `GEMINI_API_KEY`. Omitting it exercises the browser with predetermined choices. Use `--screenshots` with a new directory to retain the synthetic frames.
 
 The macOS ARM64 build rendered Instagram's sign-in screen. Live DMs require an authenticated Obscura session. The synthetic reel moved between frames, while separate local MP4 and WebM probes failed to advance playback.
+
+## Sign in to Obscura
+
+```sh
+uv run --locked --extra obscura python tools/obscura_login.py
+```
+
+Open the localhost address printed by the command. Click inside Instagram's preview, enter your login there and complete any verification. When your inbox is visible, use **Save session and close viewer**. The viewer forwards inputs locally and has no model calls. Use the same command to reopen the same profile.
+
+Obscura keeps cookies and local storage under `~/Library/Application Support/Shadow/obscura-instagram`. Instagram can still expire your session. Browser session storage belongs to the open tab, and the profile has no verified persistent HTTP cache. [Obscura storage documentation](https://github.com/h4ckf0r0day/obscura/blob/main/docs/Persist-cookies-and-storage.md)

@@ -1,25 +1,21 @@
 """Run the bounded Obscura/Decision 1 navigation trial on a synthetic inbox."""
 
 import argparse
-import base64
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
-import json
 import os
 from pathlib import Path
-import socket
-import subprocess
 from tempfile import TemporaryDirectory
 from threading import Thread
 from time import monotonic, sleep
-from urllib.error import URLError
-from urllib.request import ProxyHandler, build_opener
 
 from dotenv import dotenv_values
 from PIL import Image, ImageChops, ImageDraw, ImageFont
-from websocket import create_connection
 
+from websocket import WebSocketException
+
+from shadow.obscura import ObscuraError, obscura
 from shadow.screen_decision import DecisionError, choose_action
 
 
@@ -37,44 +33,9 @@ class TrialError(RuntimeError):
     pass
 
 
-class Browser:
-    def __init__(self, connection):
-        self.connection = connection
-        self.command_id = 0
-        self.session_id = None
-        target = self.command("Target.createTarget", url="about:blank")
-        self.session_id = self.command(
-            "Target.attachToTarget", targetId=target["targetId"], flatten=True
-        )["sessionId"]
-
-    def command(self, method, **params):
-        self.command_id += 1
-        request = {"id": self.command_id, "method": method, "params": params}
-        if self.session_id:
-            request["sessionId"] = self.session_id
-        self.connection.send(json.dumps(request))
-        deadline = monotonic() + 10
-        while monotonic() < deadline:
-            response = json.loads(self.connection.recv())
-            if response.get("id") == self.command_id:
-                if "error" in response:
-                    raise TrialError(f"Obscura refused {method}: {response['error'].get('message')}")
-                return response["result"]
-        raise TrialError(f"Obscura timed out on {method}.")
-
-    def fixture_value(self, expression):
-        result = self.command("Runtime.evaluate", expression=expression, returnByValue=True)
-        return result["result"].get("value")
-
-    def screenshot(self):
-        result = self.command("Page.captureScreenshot", format="png")
-        return base64.b64decode(result["data"], validate=True)
-
-    def click(self, x, y):
-        self.command("Input.dispatchMouseEvent", type="mousePressed", x=x, y=y,
-                     button="left", clickCount=1)
-        self.command("Input.dispatchMouseEvent", type="mouseReleased", x=x, y=y,
-                     button="left", clickCount=1)
+def fixture_value(browser, expression):
+    result = browser.command("Runtime.evaluate", expression=expression, returnByValue=True)
+    return result["result"].get("value")
 
 
 @contextmanager
@@ -100,46 +61,6 @@ def local_fixture():
         finally:
             server.shutdown()
             thread.join()
-
-
-@contextmanager
-def obscura(binary, storage):
-    with socket.socket() as address:
-        address.bind(("127.0.0.1", 0))
-        port = address.getsockname()[1]
-    environment = {name: os.environ[name] for name in ("HOME", "PATH", "TMPDIR") if name in os.environ}
-    with subprocess.Popen(
-        [binary, "serve", "--host", "127.0.0.1", "--port", str(port), "--allow-private-network",
-         "--storage-dir", str(storage), "--quiet"],
-        env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    ) as process:
-        try:
-            opener = build_opener(ProxyHandler({}))
-            deadline = monotonic() + 10
-            while monotonic() < deadline and process.poll() is None:
-                try:
-                    with opener.open(f"http://127.0.0.1:{port}/json/version", timeout=1) as response:
-                        target = json.load(response)["webSocketDebuggerUrl"]
-                    break
-                except (URLError, TimeoutError):
-                    sleep(0.1)
-            else:
-                raise TrialError("Obscura's local CDP server did not start.")
-            if target != f"ws://127.0.0.1:{port}/devtools/browser":
-                raise TrialError("Obscura returned an unexpected browser endpoint.")
-            connection = create_connection(target, timeout=5, suppress_origin=True,
-                                           http_no_proxy=["127.0.0.1"])
-            try:
-                yield Browser(connection)
-            finally:
-                connection.close()
-        finally:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
 
 
 def targets(screenshot, allowed):
@@ -177,7 +98,7 @@ def ensure(condition, label):
 def wait_for(browser, expression, label):
     deadline = monotonic() + 5
     while monotonic() < deadline:
-        if browser.fixture_value(expression):
+        if fixture_value(browser, expression):
             return
         sleep(0.1)
     raise TrialError(label)
@@ -216,13 +137,13 @@ def trial(browser, url, api_key, evidence):
             choice = expected
         ensure(choice == expected, "The model picked the wrong action for the fixture.")
         if change_before_click:
-            browser.fixture_value("reorder()")
+            fixture_value(browser, "reorder()")
         if choice == "hold":
             return
         current = browser.screenshot()
         if current != screenshot:
             ensure(change_before_click, "The screen changed before click. No action was sent.")
-            ensure(browser.fixture_value("window.fixtureState") == "Alice", "A stale action changed chats.")
+            ensure(fixture_value(browser, "window.fixtureState") == "Alice", "A stale action changed chats.")
             print("Changed screenshot: stale click blocked.", flush=True)
             return
         ensure(not change_before_click, "The layout update was not detected.")
@@ -236,7 +157,7 @@ def trial(browser, url, api_key, evidence):
     browser.command("Input.dispatchMouseEvent", type="mouseWheel", x=570, y=190, deltaX=0, deltaY=300)
     wait_for(browser, "document.getElementById('history').scrollTop > 0", "Message history did not scroll.")
     # A fixture-only scroll reset keeps the reel target visible for the next step.
-    browser.fixture_value("document.getElementById('history').scrollTop = 0")
+    fixture_value(browser, "document.getElementById('history').scrollTop = 0")
     step("Open the shared reel in Alice's chat.", ("one", "two", "three"), "three")
     wait_for(browser, "window.fixtureState === 'reel'", "Reel overlay did not open.")
     first = browser.screenshot()
@@ -262,17 +183,17 @@ def trial(browser, url, api_key, evidence):
     step("Switch to Bob's conversation now.", ("one", "two"), "two")
     wait_for(browser, "window.fixtureState === 'Bob'", "Bob did not open after reordering.")
     step("Open Carol's chat only if a visible row is labeled Carol.", ("one", "two"), "hold")
-    ensure(browser.fixture_value("window.fixtureState") == "Bob", "A hold changed the active chat.")
+    ensure(fixture_value(browser, "window.fixtureState") == "Bob", "A hold changed the active chat.")
     width, height = Image.open(io.BytesIO(browser.screenshot())).size
-    ensure(browser.fixture_value(f"innerWidth === {width} && innerHeight === {height}"),
+    ensure(fixture_value(browser, f"innerWidth === {width} && innerHeight === {height}"),
            "Screenshot coordinates do not match this viewport.")
     browser.click(480, 373)
     browser.command("Input.dispatchKeyEvent", type="char", text="draft", key="d")
-    ensure(browser.fixture_value("document.getElementById('composer').value") == "draft",
+    ensure(fixture_value(browser, "document.getElementById('composer').value") == "draft",
            "Keyboard input did not reach the fixture composer.")
     if evidence:
         (evidence / "bob-draft.png").write_bytes(browser.screenshot())
-    browser.fixture_value("document.activeElement.blur()")
+    fixture_value(browser, "document.activeElement.blur()")
     _, before_resize = targets(browser.screenshot(), ("one", "two"))
     browser.command("Emulation.setDeviceMetricsOverride", width=800, height=600,
                     deviceScaleFactor=1, mobile=False)
@@ -283,7 +204,7 @@ def trial(browser, url, api_key, evidence):
     wait_for(browser, "window.fixtureState === 'Alice'", "Alice did not open after resizing.")
     if api_key:
         ready = browser.screenshot()
-        browser.fixture_value("pane.innerHTML = '<h2>Alice</h2><p>Loading messages…</p>'")
+        fixture_value(browser, "pane.innerHTML = '<h2>Alice</h2><p>Loading messages…</p>'")
         loading = browser.screenshot()
         choices = {"ready": "The message history and message composer are visible.",
                    "hold": "The chat header is visible but the messages or composer are still loading."}
@@ -311,13 +232,15 @@ def main():
         args.screenshots.mkdir(mode=0o700)
     try:
         with TemporaryDirectory(prefix="shadow-obscura-") as storage, local_fixture() as url:
-            with obscura(args.browser, storage) as browser:
+            with obscura(args.browser, storage, allow_private_network=True) as browser:
                 trial(browser, url, api_key, args.screenshots)
-            with obscura(args.browser, storage) as browser:
+            with obscura(args.browser, storage, allow_private_network=True) as browser:
                 browser.command("Page.navigate", url=url)
                 wait_for(browser, "document.cookie.includes('shadow_fixture=1')",
                          "The fixture cookie did not survive browser restart.")
-    except (DecisionError, OSError, TrialError) as error:
+                ensure(fixture_value(browser, "localStorage.getItem('shadow_fixture')") == "visited",
+                       "Fixture local storage did not survive browser restart.")
+    except (DecisionError, ObscuraError, OSError, TrialError, WebSocketException) as error:
         parser.exit(status=1, message=f"Trial failed: {error}\n")
     print("PASS: screenshots, coordinate input, scroll, reel overlay, quote, reaction picker, "
           "stale targets, chat switch, draft input, viewport resize, and storage restart.")
