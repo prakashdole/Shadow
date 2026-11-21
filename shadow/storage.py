@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import json
+import re
 import sqlite3
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
@@ -430,10 +431,16 @@ CREATE TABLE event_revisions (
 CREATE INDEX event_revisions_event ON event_revisions(event_id, id);
 """
 
+SCHEMA_V12 = """
+CREATE TABLE suppressed_recall_events (
+    event_id INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE
+);
+"""
+
 MIGRATIONS: tuple[tuple, ...] = (
     (1, SCHEMA_V1), (2, SCHEMA_V2, True), (3, SCHEMA_V3), (4, SCHEMA_V4), (5, SCHEMA_V5),
     (6, SCHEMA_V6), (7, SCHEMA_V7), (8, SCHEMA_V8), (9, SCHEMA_V9), (10, SCHEMA_V10),
-    (11, SCHEMA_V11),
+    (11, SCHEMA_V11), (12, SCHEMA_V12),
 )
 CURRENT_VERSION = MIGRATIONS[-1][0]
 
@@ -1016,6 +1023,48 @@ class Storage:
             (conversation_id,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def recall_events(self, conversation_id: int, before_event_id: int, query: str) -> list[dict]:
+        """Return bounded historical evidence from the verified conversation."""
+        common = {"about", "and", "did", "how", "that", "the", "this", "was", "what",
+                  "when", "where", "which", "with", "would", "you", "your"}
+        terms = dict.fromkeys(term for term in re.findall(r"[^\W_]+", query.lower()[:4000])
+                              if 3 <= len(term) <= 64 and term not in common)
+        if not terms:
+            return []
+        match = " OR ".join(f'"{term}"' for term in list(terms)[:16])
+        # shortcut: rebuild a bounded index in memory per draft; persist an index if replay shows this is slow.
+        rows = list(self._conn.execute("""
+            SELECT id AS event_id, sender, observed_at, substr(text, 1, 1000) AS text
+            FROM events
+            WHERE conversation_id = ? AND seq < (
+                SELECT seq FROM events WHERE id = ? AND conversation_id = ?
+            )
+            AND kind = 'text' AND sender IN ('contact', 'owner') AND text <> ''
+            AND origin <> 'shadow_generated'
+            AND NOT EXISTS (SELECT 1 FROM suppressed_recall_events WHERE event_id = events.id)
+            ORDER BY seq DESC, id DESC LIMIT 2000
+        """, (conversation_id, before_event_id, conversation_id)))
+        if not rows:
+            return []
+        rows.reverse()
+        with closing(sqlite3.connect(":memory:")) as index:
+            try:
+                index.execute("CREATE VIRTUAL TABLE history USING fts5(text)")
+            except sqlite3.OperationalError as exc:
+                if str(exc) == "no such module: fts5":
+                    return []
+                raise
+            index.executemany("INSERT INTO history(rowid, text) VALUES (?, ?)",
+                              ((position, row["text"]) for position, row in enumerate(rows, 1)))
+            best = index.execute("SELECT rowid FROM history WHERE history MATCH ? "
+                                 "ORDER BY rank, rowid DESC LIMIT 2", (match,)).fetchall()
+            newest = index.execute("SELECT rowid FROM history WHERE history MATCH ? "
+                                   "ORDER BY rowid DESC LIMIT 1", (match,)).fetchall()
+        # Include surrounding text so a nearby correction can qualify an older hit.
+        positions = {neighbor for (position,) in best + newest
+                     for neighbor in range(max(1, position - 1), min(len(rows), position + 1) + 1)}
+        return [dict(rows[position - 1]) for position in sorted(positions)]
 
     def add_events(self, events: list[dict]) -> list[int]:
         """One aligned window is atomic; a failed item cannot leave its prefix."""

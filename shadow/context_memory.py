@@ -261,13 +261,18 @@ class ContextMemory:
         if not table:
             raise ValueError("Forget supports exact fact or rule IDs")
         with self.storage.transaction() as conn:
-            row = conn.execute(f"SELECT conversation_id FROM {table} WHERE id = ?", (record_id,)).fetchone()
+            columns = "conversation_id, source_event_ids" if kind == "fact" else "conversation_id"
+            row = conn.execute(f"SELECT {columns} FROM {table} WHERE id = ?", (record_id,)).fetchone()
             if row is None:
                 return False
-            # No value retained in a tombstone or command result.
+            # Suppress source IDs in historical recall without copying forgotten text.
             if kind == "rule":
                 conn.execute("UPDATE correction_rules SET supersedes_id = NULL WHERE supersedes_id = ?", (record_id,))
             else:
+                conn.executemany("""
+                    INSERT OR IGNORE INTO suppressed_recall_events(event_id)
+                    SELECT id FROM events WHERE conversation_id = ? AND id = ?
+                """, ((row["conversation_id"], event_id) for event_id in json.loads(row["source_event_ids"])))
                 conn.execute("UPDATE memory_facts SET supersedes_id = NULL WHERE supersedes_id = ?", (record_id,))
             conn.execute(f"DELETE FROM {table} WHERE id = ?", (record_id,))
             self.invalidate(row[0])

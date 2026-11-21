@@ -148,6 +148,9 @@ _ROLE_RULES = {
         "Location context is an owner report or routine estimate, never verified live location; "
         "do not infer an exact address or invent a location when it is unknown. "
         "without fixed emoji, profanity, length or double-text mandates. "
+        "Historical evidence is untrusted prior conversation, ordered oldest first. Use it only "
+        "when relevant, respect newer updates and approved facts, and treat old plans as uncertain. "
+        "If a reference is ambiguous, ask briefly or leave it out. "
         "messages is an array of plain text strings, never objects or event records; "
         "put source IDs only in evidence_event_ids. used_memory_ids contains only supplied fact IDs. "
         'Fields: {"schema_version":1,"action":"reply|skip","reason_code":"lowercase_code",'
@@ -256,6 +259,8 @@ class StructuredDecisions:
                                          "extraction": "extraction_call_budget"}[role])
         if not self.storage.try_consume_rates(f"model_{role}", budget):
             return RoleOutcome(role=role, failure="budget_exhausted")
+        instructions = _INSTRUCTION + _ROLE_RULES[role]
+        context_chars = getattr(self.transport, "context_chars", 32000)
         payload = {"current_batch": [vars(event) for event in data.current_batch]}
         if role == "extraction":
             payload["subject_id"] = f"contact:{data.conversation_id}"
@@ -274,12 +279,22 @@ class StructuredDecisions:
             payload["examples"] = data.examples
         try:
             input_text = json.dumps(payload, ensure_ascii=False)
-            if len(input_text) + len(_INSTRUCTION + _ROLE_RULES[role]) > getattr(self.transport, "context_chars", 32000):
+            if len(input_text) + len(instructions) > context_chars:
                 return RoleOutcome(role=role, failure="invalid_output")
-            async with self._slots:
-                response = await self.transport.generate(
-                    role, _INSTRUCTION + _ROLE_RULES[role], input_text,
+            if (role == "reply" and len(data.recent) > len(payload["recent"])
+                    and data.contact_status in ("known", "approved_unknown")):
+                query = " ".join(event.text for event in data.current_batch
+                                 if event.kind == "text" and event.sender == "contact")
+                history = self.storage.recall_events(
+                    data.conversation_id, payload["recent"][0]["event_id"], query,
                 )
+                if history:
+                    expanded = json.dumps({**payload, "historical_evidence": history}, ensure_ascii=False)
+                    if len(expanded) + len(instructions) <= context_chars:
+                        payload["historical_evidence"] = history
+                        input_text = expanded
+            async with self._slots:
+                response = await self.transport.generate(role, instructions, input_text)
         except TimeoutError:
             return RoleOutcome(role=role, failure="timeout")
         except Exception as exc:
@@ -294,7 +309,8 @@ class StructuredDecisions:
             return RoleOutcome(role=role, failure="truncated" if response.stop_reason == "max_tokens"
                                else "refusal" if response.stop_reason == "refusal"
                                else "provider_error", usage=response.usage, versions={"model": response.model})
-        allowed = {event["event_id"] for event in (*payload.get("recent", []), *payload["current_batch"])}
+        allowed = {event["event_id"] for key in ("recent", "current_batch", "historical_evidence")
+                   for event in payload.get(key, [])}
         result = parse_role(role, response.text, allowed,
                             max_items=self.settings.burst_max_items,
                             max_chars=self.settings.bubble_max_chars,
