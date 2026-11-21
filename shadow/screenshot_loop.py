@@ -19,7 +19,7 @@ from shadow.contracts import ReplyDraft
 from shadow.decisions import parse_role
 from shadow.gemini_client import ProviderFailure, generate
 from shadow.screen_decision import DecisionError, choose_action
-from shadow.targets import classify, offer
+from shadow.targets import classify, offer, thread_box
 from shadow.viewport import HEIGHT, WIDTH, digest, label, open_png, png_bytes, region_stable
 
 log = logging.getLogger("shadow.screenshot")
@@ -508,8 +508,9 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
     thread_id = thread_id_of(browser.page_url())
     if not thread_id:
         return _done(outcome="hold", reason="unbound_thread")
-    header = _header(open_png(browser.screenshot()))
-    crop = open_png(browser.screenshot()).crop((360, 64, 1260, 660))
+    image = open_png(browser.screenshot())
+    header = _header(image)
+    crop = image.crop(thread_box(image))
     try:
         transcript = parse_transcript(vision.transcribe(png_bytes(crop)))
     except ProviderFailure as exc:
@@ -544,7 +545,8 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
         storage.set_runtime(account_id=account_id, mode="observe", autonomy_scope="none")
 
     def reread():
-        fresh = open_png(browser.screenshot()).crop((360, 64, 1260, 660))
+        fresh_image = open_png(browser.screenshot())
+        fresh = fresh_image.crop(thread_box(fresh_image))
         return parse_transcript(vision.transcribe(png_bytes(fresh)))["bubbles"]
 
     saved = draft_and_save(storage, account_id=account_id, thread_id=thread_id, bubbles=bubbles,

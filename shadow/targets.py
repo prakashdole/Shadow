@@ -104,6 +104,11 @@ def _busy_before(busy, start) -> bool:
     return any(busy(x) >= 16 for x in range(48, start, 4))
 
 
+def thread_box(image: Image.Image) -> tuple[int, int, int, int]:
+    """Conversation pane only. The list gutter is excluded so a transcript crop stays in one thread."""
+    return _panels(image)[1]
+
+
 def _panels(image: Image.Image):
     # A gutter left of 360 still uses 360 so a short label cannot flip the row median.
     split = _split(image)

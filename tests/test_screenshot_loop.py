@@ -18,7 +18,7 @@ from shadow.screenshot_loop import (
     fingerprint, parse_transcript, run_turn, sample_interval, sample_player,
 )
 from shadow.storage import open_storage
-from shadow.targets import classify, offer
+from shadow.targets import classify, offer, thread_box
 from shadow.viewport import crop_resize, open_png, png_bytes, region_stable
 
 NOW = datetime(2026, 11, 21, tzinfo=timezone.utc)
@@ -174,6 +174,17 @@ class ScreenTests(unittest.TestCase):
         cards = [item for item in offer(image, "thread") if item.key.startswith("media-")]
         self.assertEqual(len(cards), 1)
         self.assertEqual(cards[0].expects, "overlay")
+
+    def test_transcript_crop_excludes_a_wide_inbox(self):
+        image = Image.new("RGB", (1280, 720), "#121212")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((96, 300, 430, 348), fill="#d0d4dc")
+        draw.rectangle((96, 380, 430, 428), fill="#d0d4dc")
+        draw.rectangle((700, 200, 900, 244), fill="#d0d4dc")
+        left, _top, right, _bottom = thread_box(image)
+        self.assertGreaterEqual(left, 430)
+        self.assertLess(left, 700)
+        self.assertEqual(right, 1260)
 
     def test_low_confidence_holds(self):
         image = paint(["Alice Example", "Bob Example"])

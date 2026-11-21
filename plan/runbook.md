@@ -76,6 +76,10 @@ That reopens the profile and, without a model, opens inbox rows by verified posi
 
 Pause the observer with `uv run --locked shadow pause` when that process is the one running. The screenshot directory is separate.
 
+## Not cleared
+
+Decision 1, transcription, and drafts were not run on the live inbox. That would send private DM pixels to Gemini and OpenAI, and those projects are not confirmed as approved for this account. The visible shared cards opened `/p/`, not `/reel/`. The public Reels feed is the reel-player evidence. Offline tests save a plain draft from ordered bubbles, and the browser fixture saves one shared-reel draft.
+
 ## Host notes
 
 A future Linux host needs Chromium, a private persistent profile directory, SQLite on local disk, the same environment variables, and a supervisor that runs one process at a time against that profile. Give the browser at least 2 GB. The profile lock is exclusive. Do not deploy from this runbook.
