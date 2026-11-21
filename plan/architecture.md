@@ -19,12 +19,13 @@ flowchart TD
     Control -->|Shared reel| Media[Capture caption and timed frames or clip]
     OCR --> Context[Assemble one conversation turn]
     Crop --> Context
-    Media --> Context
+    Media --> Reel[Smaller multimodal model interprets the reel]
+    Reel -->|Reel summary and relevant details| Context
     Context --> Reply[Main multimodal reply model]
     Reply --> Draft[Store draft for owner review]
 ```
 
-The coordinator controls when to capture and where an image goes. Decision 1 can choose to open a reel. Once the player is visible, a local timer collects frames and the coordinator submits the batch to the reply model. There is no reason to ask Decision 1 whether to take each successive frame.
+Decision 1 can choose to open a reel. Once the player is visible, a local timer collects frames. The smaller multimodal model interprets the batch, and the coordinator adds its summary to the chat context for the main reply model.
 
 ## Translating a decision into a tap
 
@@ -38,7 +39,8 @@ For example, an annotated screenshot might contain a chat header, two reel cards
 | --- | --- |
 | Browser adapter | Obscura is the first candidate after the API trial. Exercise its render-enabled screenshot and mouse-input support directly. Verify actual login persistence, view geometry, typing and reel playback on the target machine. [Obscura protocol support](https://github.com/h4ckf0r0day/obscura#cdp-api) |
 | Screen decision | Give `gemini-decision-1` one image, a task and bounded questions. Use the winning choice and its confidence for routing. The API supports independent choice, yes/no and scoring questions on shared multimodal input. [Google Decisions API](https://blog.google/innovation-and-ai/technology/developers-tools/gemini-decisions-api/) |
-| Text and media inputs | Local OCR supplies text and geometry. If a quote, emoji or layout needs visual interpretation, the main reply model receives the original chat crop in the same request as the available text. Reel evidence goes to the same model with the sender’s text, caption and any available audio. |
+| Chat inputs | Local OCR supplies text and geometry. If a quote, emoji or layout needs visual interpretation, the main reply model receives the original chat crop with the available text. |
+| Reel understanding | A smaller multimodal model interprets the caption, frames and any available audio. It returns the gist, relevant on-screen text or speech, and gaps in the evidence. The main reply model receives that summary with the sender’s message. |
 | Coordinator and storage | Reuse the account scope, pause, revision and SQLite transaction concepts in `shadow/coordinator.py` and `shadow/storage.py`. Check their current identity assumptions before admitting screenshot observations. |
 | Reply and owner review | Reuse scoped memory, quality checks, approvals and the outbox where their contracts hold. Browser actions belong to the coordinator. Models receive conversation content as data and have no authority to send. |
 

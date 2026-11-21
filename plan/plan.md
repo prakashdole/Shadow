@@ -22,9 +22,9 @@ Then exercise a read-only Instagram session with an appropriate test account. Ch
 
 Run local OCR on labeled chat crops. Score literal text, order, sender, quotes and the association between a card and an accompanying message. On difficult cases, compare drafts made from OCR text with drafts made using the same text and the original crop in one main model request. Include Hinglish, emoji, clipped bubbles, repeated text and screenshots with multiple speakers.
 
-For reels, compare 1-, 2- and 4-second intervals on the same clips. Include fast captions, a late reveal, an audio-dependent joke, a stalled player and an unavailable reel. Compare frames with a short clip containing audio when capture works. Have the owner judge the reply against the actual reel and the sender’s question. Record evidence missed, cost per turn and time to a usable draft.
+For reels, compare how the smaller multimodal model summarizes the same clips with frames sampled at 1-, 2- and 4-second intervals. Include fast captions, a late reveal, an audio-dependent joke, a stalled player and an unavailable reel. Compare frames with a short clip containing audio when capture works. Check each summary against the reel, then have the owner judge the reply against the reel and the sender’s question. Record evidence missed, cost per turn and time to a usable draft.
 
-**To pass**, identify when OCR supplies enough context and when an image improves the draft. Select the reel sampling policy and main reply model from these results. Record which cases require more evidence or a hold.
+**To pass**, identify when OCR supplies enough context and when an image improves the draft. Select the smaller reel model, reel sampling policy and main reply model from these results. Record which cases require more evidence or a hold.
 
 ## 4. Integrate a draft-only loop
 
@@ -45,7 +45,7 @@ Measure which drafts the owner accepts, edits or skips. If assisted sending is p
 | Browser interaction | Screenshots, coordinate input and post-action verification. Obscura is the first candidate. | Browser trial after the API test |
 | Target selection | Prefer a small preset action vocabulary with calibrated fixed controls and per-frame targets for moving content. | Compare targeting errors and hold rates in phases 1–2 |
 | Text extraction | Use local OCR and include the original crop in the main reply request when visual context matters. | Transcript, attribution and draft comparison in phase 3 |
-| Reel context | Send ordered samples and the associated chat directly to the main model. Audio and interval are experimental. | Owner-rated reel comparison in phase 3 |
+| Reel context | Send captured media to a smaller multimodal model for interpretation. Give its summary and the associated chat to the main reply model. | Owner-rated reel comparison in phase 3 |
 | Existing project | Keep the uv-managed Python project, local memory, voice work and owner controls. Replace the observation path incrementally. | Verify each reused contract during integration |
 
 The [product requirements](prd.md) define the owner experience. The [architecture](architecture.md) assigns responsibilities. The [TRD](trd.md) defines the data, failure and verification contracts.

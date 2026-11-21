@@ -12,7 +12,7 @@ The first deliverable is smaller than a working bot. Given a saved screenshot an
 | --- | --- |
 | A known contact sends plain text | Shadow reads the recent exchange in order, distinguishes the two speakers and drafts a relevant reply. |
 | A known contact shares a reel | Shadow associates the card with its message, inspects the accessible media and drafts from the evidence it collected. |
-| A caption or follow-up changes the meaning | The reply model sees the surrounding conversation and the reel together. A question about the soundtrack requires audio or a reliable transcript. |
+| A caption or follow-up changes the meaning | The reply model uses the reel summary alongside the surrounding conversation. A question about the soundtrack requires audio or a reliable transcript. |
 | Several cards are visible | Shadow opens only the card it can associate with the intended turn. If that association is unclear, the draft waits. |
 | A reel is removed, stalls or requires another login | Shadow records the reason. It can still draft from the accompanying text when that text makes sense on its own. |
 | A new message arrives or the owner answers on their phone | Shadow discards the stale draft. An owner reply yields control of the conversation to the owner. |
