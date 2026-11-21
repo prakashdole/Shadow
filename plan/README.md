@@ -5,7 +5,7 @@ Shadow is a self-hosted assistant for one owner’s Instagram conversations. The
 | Read this | When you need to know |
 | --- | --- |
 | [Product requirements](prd.md) | Which conversations Shadow handles, what the owner sees and what counts as a good draft |
-| [Architecture](architecture.md) | How the screenshot, browser, Decision 1, OCR, reply model and local state fit together |
+| [Architecture](architecture.md) | How the screenshot, browser, Decision 1, Flash-Lite read, reply model and local state fit together |
 | [Technical requirements](trd.md) | What each component receives and returns, when a tap is valid and how failures are handled |
 | [Implementation plan](plan.md) | What to build first, how to test it and which decisions are still open |
 
@@ -28,7 +28,17 @@ Install Chromium or Chrome for Testing on the host. Shadow looks for Chromium or
 uv run --locked --extra browser python -m tools.chromium_trial --with-model
 ```
 
-The trial serves a synthetic inbox and verifies what each screenshot-driven click changed. The fixture supplies colored markers for target detection. Omit `--with-model` to run offline. Use `--screenshots` with a new directory to save synthetic frames.
+The trial serves a synthetic inbox and verifies what each screenshot-driven click changed. The fixture supplies colored markers for that trial only. The draft loop does not use them. Omit `--with-model` to run offline. Use `--screenshots` with a new directory to save synthetic frames.
+
+## Run one screenshot draft
+
+The viewport is 1280×720 at device scale 1. The command saves a draft and has no send path. Pass a data directory that is not the observer database.
+
+```sh
+uv run --locked --extra browser python -m tools.screenshot_turn --help
+```
+
+`--live` reuses the Instagram profile and does not call a model unless `--allow-live-model` is set. Leave that flag off unless the Gemini project is approved for the private images. See [the runbook](runbook.md).
 
 ## Open the Chromium viewer
 

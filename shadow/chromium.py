@@ -61,6 +61,17 @@ class Browser:
         self.command("Input.dispatchMouseEvent", type="mouseReleased", x=x, y=y,
                      button="left", clickCount=1)
 
+    def scroll(self, x, y, dy):
+        self.command("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y,
+                     deltaX=0, deltaY=dy)
+
+    def navigate(self, url):
+        return self.command("Page.navigate", url=url)
+
+    def page_url(self):
+        tree = self.command("Page.getFrameTree")
+        return tree["frameTree"]["frame"]["url"]
+
 
 def find_chromium():
     if binary := os.environ.get("CHROMIUM_BINARY"):

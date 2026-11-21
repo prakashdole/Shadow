@@ -44,8 +44,8 @@ Measure which drafts the owner accepts, edits or skips. If assisted sending is p
 | --- | --- | --- |
 | Browser interaction | Screenshots, coordinate input and post-action verification. Chromium is the selected engine. | Verify on the deployment host |
 | Target selection | Prefer a small preset action vocabulary with calibrated fixed controls and per-frame targets for moving content. | Compare targeting errors and hold rates in phases 1–2 |
-| Text extraction | Use local OCR and include the original crop in the main reply request when visual context matters. | Transcript, attribution and draft comparison in phase 3 |
-| Reel context | Send captured media to a smaller multimodal model for interpretation. Give its summary and the associated chat to the main reply model. | Owner-rated reel comparison in phase 3 |
+| Text extraction | `gemini-3.5-flash-lite` transcribes the conversation crop. Local OCR is not on this path. | Transcript and attribution checks |
+| Reel context | `gemini-3.1-flash-lite` reads 4–8 timestamped frames. A 0.35s probe uses a 0.45s interval when the picture is changing, otherwise 1s. Speech requires captured audio. | Reel summary checks |
 | Existing project | Keep the uv-managed Python project, local memory, voice work and owner controls. Replace the observation path incrementally. | Verify each reused contract during integration |
 
 The [product requirements](prd.md) define the owner experience. The [architecture](architecture.md) assigns responsibilities. The [TRD](trd.md) defines the data, failure and verification contracts.

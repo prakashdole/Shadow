@@ -14,14 +14,12 @@ flowchart TD
     Capture --> Router[Gemini Decision 1]
     Router -->|Named choice| Control[Coordinator checks screen and target]
     Control -->|One verified tap| Browser
-    Control -->|Text turn| OCR[Local OCR with bubble positions]
-    OCR -->|Visual context needed| Crop[Keep original chat crop]
-    Control -->|Shared reel| Media[Capture caption and timed frames or clip]
-    OCR --> Context[Assemble one conversation turn]
-    Crop --> Context
-    Media --> Reel[Smaller multimodal model interprets the reel]
-    Reel -->|Reel summary and relevant details| Context
-    Context --> Reply[Main multimodal reply model]
+    Control -->|Text turn| Read[Gemini 3.5 Flash-Lite reads the chat crop]
+    Read --> Context[Assemble one conversation turn]
+    Control -->|Shared reel| Media[Capture caption and timed frames]
+    Media --> Reel[Gemini 3.1 Flash-Lite interprets the reel]
+    Reel -->|Reel summary| Context
+    Context --> Reply[gpt-4o-mini drafts one reply]
     Reply --> Draft[Store draft for owner review]
 ```
 
@@ -29,7 +27,7 @@ Decision 1 can choose to open a reel. Once the player is visible, a local timer 
 
 ## Translating a decision into a tap
 
-Keep a small vocabulary of roughly 10–15 actions across the app. Offer only choices relevant to the current screen. A fixed viewport and zoom permit pre-calibrated regions for stable controls such as Back or Close. Inbox rows and reel cards move. Find plausible regions in the **current** image, overlay numbers on a copy and retain the original for OCR. The first API experiment can use hand-labeled boxes. The browser trial must demonstrate how runtime code finds those boxes, using visible layout, OCR boxes or image matching.
+Keep a small vocabulary of roughly 10–15 actions across the app. Offer only choices relevant to the current screen. A fixed viewport and zoom permit pre-calibrated regions for stable controls such as Back or Close. Inbox rows and reel cards move. Find plausible regions in the **current** image, overlay numbers on a copy and keep the original for transcription. The browser trial shows runtime code finding those boxes from visible contrast. The draft loop does not use the fixture's colored markers.
 
 For example, an annotated screenshot might contain a chat header, two reel cards and a composer. The request describes which numbered region corresponds to each visible candidate and asks which card the latest incoming turn refers to. Decision 1 selects a supplied option or `hold`. The coordinator owns the mapping from option to pixel and verifies the resulting screen before continuing. The system instructions describe what makes an action appropriate. Hard-coding every pixel into a prompt would leave code unable to detect a moved target.
 
@@ -39,8 +37,8 @@ For example, an annotated screenshot might contain a chat header, two reel cards
 | --- | --- |
 | Browser adapter | Use headless Chromium with a persistent browser profile. Capture the fixed viewport and dispatch coordinate input through the Chrome DevTools Protocol. Verify session persistence, typing and reel playback on each deployment host. [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) |
 | Screen decision | Use the latest screenshot or a crop as the evidence in every `gemini-decision-1` request. Include the task and bounded choices as instructions. Use the winning choice and its confidence for routing. [Google Decisions API](https://blog.google/innovation-and-ai/technology/developers-tools/gemini-decisions-api/) |
-| Chat inputs | Local OCR supplies text and geometry. If a quote, emoji or layout needs visual interpretation, the main reply model receives the original chat crop with the available text. |
-| Reel understanding | A smaller multimodal model interprets the caption, frames and any available audio. It returns the gist, relevant on-screen text or speech, and gaps in the evidence. The main reply model receives that summary with the sender’s message. |
+| Chat inputs | `gemini-3.5-flash-lite` transcribes the original conversation crop into ordered bubbles. Decision 1 does not receive that transcript. The reply model receives the bubbles and any reel summary, not a second copy of unrelated threads. |
+| Reel understanding | `gemini-3.1-flash-lite` interprets timestamped frames. Speech is omitted unless audio was actually captured. The reply model receives that summary with the sender’s message. |
 | Coordinator and storage | Reuse the account scope, pause, revision and SQLite transaction concepts in `shadow/coordinator.py` and `shadow/storage.py`. Check their current identity assumptions before admitting screenshot observations. |
 | Reply and owner review | Reuse scoped memory, quality checks, approvals and the outbox where their contracts hold. Browser actions belong to the coordinator. Models receive conversation content as data and have no authority to send. |
 

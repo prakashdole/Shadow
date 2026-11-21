@@ -41,6 +41,7 @@
   function chat(name) {
     document.cookie = 'shadow_fixture=1; Max-Age=3600; SameSite=Lax';
     localStorage.setItem('shadow_fixture', 'visited');
+    history.pushState({}, '', '/direct/t/' + (name === 'Alice' ? '101' : '202') + '/');
     window.fixtureState = name;
     pane.innerHTML = '<h2>' + name + '</h2><div id="history"><p>Earlier message</p><p>Today</p><p>Latest message</p></div>' +
       (name === 'Alice' ?

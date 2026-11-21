@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import socket
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -135,6 +136,20 @@ class OpenAITransport:
         if role not in self.models or len(system) + len(input_text) > self.context_chars:
             raise ValueError("Unknown role or context exceeds declared provider budget")
         return await asyncio.to_thread(self._request, role, system, input_text)
+
+
+def openai_api_key(environ=None):
+    """The screenshot loop accepts the owner's OPENAI_API_KEY.
+
+    Existing callers of `configured_transport` still require SHADOW_OPENAI_API_KEY.
+    A screenshot entry point checks that name first, then OPENAI_API_KEY.
+    """
+    env = os.environ if environ is None else environ
+    for name in ("SHADOW_OPENAI_API_KEY", "OPENAI_API_KEY"):
+        value = env.get(name, "")
+        if type(value) is str and value.strip() and not any(char.isspace() for char in value.strip()):
+            return value.strip()
+    return ""
 
 
 def configured_transport():
