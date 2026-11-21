@@ -14,8 +14,8 @@ from PIL import Image, ImageDraw
 
 from shadow.gemini_client import ProviderFailure, generate
 from shadow.screenshot_loop import (
-    HEADER, TASK_CLOSE, TASK_NAMES, TASK_REEL, TASK_ROW, act, draft_and_save, evidence_problem,
-    fingerprint, parse_transcript, run_turn, sample_interval, sample_player,
+    HEADER, TASK_CLOSE, TASK_NAMES, TASK_REEL, TASK_ROW, act, claim_inbox_retry, draft_and_save,
+    evidence_problem, fingerprint, finish_inbox_turn, parse_transcript, run_turn, sample_interval, sample_player,
 )
 from shadow.storage import open_storage
 from shadow.targets import classify, offer, thread_box
@@ -297,6 +297,22 @@ class DraftTests(unittest.TestCase):
         self.assertEqual(result["reason"], "wrong_thread")
         self.assertEqual(self.storage.conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0], 0)
 
+    def test_unchanged_conversation_needs_only_one_transcription(self):
+        image = paint(["First message in the open conversation", "Second message in the open conversation",
+                       "Third message in the open conversation"], column="thread")
+        browser = Shots([image], url="https://www.instagram.com/direct/t/101/")
+
+        class Once(Vision):
+            def transcribe(self, png):
+                self.calls.append("transcribe")
+                return super().transcribe(png)
+
+        vision = Once()
+        result = run_turn(browser, vision, self.storage, account_id="acct", now=NOW,
+                          primary=lambda *_: (reply(), {}), fallback=None)
+        self.assertEqual(result["outcome"], "draft")
+        self.assertEqual(vision.calls, ["transcribe"])
+
     def test_incomplete_transcript_waits_without_drafting(self):
         image = paint(["First message in the open conversation", "Second message in the open conversation",
                        "Third message in the open conversation"], column="thread")
@@ -552,8 +568,17 @@ class FixtureTests(unittest.TestCase):
                         return reply("haan, dekha"), {"model": "gpt-4o-mini", "usage": {}, "latency_ms": 1}
 
                     result = run_turn(browser, FixtureVision(), storage, account_id="acct", now=NOW,
-                                      primary=primary, fallback=lambda *_args: (_ for _ in ()).throw(AssertionError()))
+                                      primary=primary, fallback=None, track_inbox=True)
                     self.assertEqual(result["outcome"], "draft")
+                    self.assertIsNone(claim_inbox_retry(storage, "different-account"))
+                    self.assertEqual(claim_inbox_retry(storage, "acct"), "101")
+                    pending = {"outcome": "pending"}
+                    finish_inbox_turn(storage, "acct", pending)
+                    self.assertNotIn("inbox_retry_exhausted", pending)
+                    self.assertEqual(claim_inbox_retry(storage, "acct"), "101")
+                    finish_inbox_turn(storage, "acct", pending)
+                    self.assertTrue(pending["inbox_retry_exhausted"])
+                    self.assertIsNone(claim_inbox_retry(storage, "acct"))
                     self.assertEqual(fixture_value(browser, "window.fixtureState"), "Alice")
                     self.assertIn("/direct/t/101/", browser.page_url())
                     self.assertEqual(fixture_value(browser, "document.getElementById('composer').value"), "")

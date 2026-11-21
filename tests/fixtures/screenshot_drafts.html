@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Shadow draft qualification</title>
+<style>
+  body {margin: 0; background: #f6f8fa; color: #182134; font: 18px Arial, sans-serif;}
+  header {height: 56px; line-height: 56px; background: #23324d; color: white; padding: 0 24px;}
+  nav {position: absolute; left: 82px; top: 115px;}
+  button {font: inherit; border: 0; cursor: pointer;}
+  nav button {display: block; width: 166px; height: 44px; margin-bottom: 30px; color: white; background: #263652;}
+  article {position: absolute; left: 440px; right: 45px; top: 68px;}
+  h2 {font-size: 23px; margin: 6px 0 32px;}
+  .bubble, #card {box-sizing: border-box; padding: 10px 14px; border-radius: 8px;}
+  .bubble {width: max-content; min-height: 38px; background: #28384f; color: white; margin: 12px 0;}
+  .owner {margin-left: auto; background: #315f9c;}
+  #card {width: 204px; height: 212px; color: white; background: #642d46; text-align: left;}
+  #player {position: fixed; inset: 0; background: #111827; color: white;}
+  #close {position: absolute; top: 50px; right: 60px; color: #111827; background: white; padding: 10px;}
+  #frame {width: 380px; height: 310px; margin: 160px auto 0; padding: 40px;
+          background: #844522; font-size: 32px; text-align: center;}
+</style>
+<header>Messages</header>
+<nav>
+  <button id="first" onclick="openThread('101')"></button>
+  <button onclick="openThread('202')">Dev · Seen</button>
+</nav>
+<article id="thread"></article>
+<section id="player" hidden>
+  <button id="close" onclick="closeReel()">Close reel</button>
+  <div id="frame">Paper kite on a windy hill</div>
+</section>
+<script>
+  const reelCase = location.search === '?reel';
+  const thread = document.getElementById('thread');
+  const player = document.getElementById('player');
+  const frame = document.getElementById('frame');
+  const first = document.getElementById('first');
+  first.textContent = '● Riya · Unread';
+  thread.innerHTML = '<h2>Select a chat</h2>';
+  function openThread(id) {
+    history.replaceState({}, '', '/direct/t/' + id + '/');
+    document.body.dataset.thread = id;
+    thread.innerHTML = '<h2>Riya</h2><div class="bubble">yaar weekend ka plan?</div>' +
+      '<div class="bubble owner">abhi tak kuch fix nahi</div>' +
+      (reelCase
+        ? '<button id="card" onclick="openReel()">Shared reel<br>Paper kite in the wind<br>▶ Play reel</button><div class="bubble">yaar kite dekhi?</div>'
+        : '<div class="bubble">kal chai pe chale?</div>');
+  }
+  let playback;
+  function openReel() {
+    history.replaceState({}, '', '/reel/synthetic/');
+    player.hidden = false;
+    let index = 0;
+    const frames = ['Paper kite lifts', 'Paper kite climbs', 'Paper kite glides', 'Paper kite lands'];
+    playback = setInterval(() => { frame.textContent = frames[index++ % frames.length]; }, 330);
+  }
+  function closeReel() {
+    clearInterval(playback);
+    player.hidden = true;
+    history.replaceState({}, '', '/direct/t/' + document.body.dataset.thread + '/');
+  }
+</script>

@@ -1,7 +1,10 @@
 """Real provider calls with synthetic images. Skipped unless SHADOW_LIVE_PROVIDERS=1."""
 
+from contextlib import redirect_stdout
+from io import StringIO
 import json
 import os
+from pathlib import Path
 from datetime import datetime, timezone
 import subprocess
 from tempfile import TemporaryDirectory
@@ -21,7 +24,10 @@ from shadow.storage import open_storage
 from shadow.viewport import label, png_bytes
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
-FONT = "/System/Library/Fonts/Supplemental/Arial.ttf"
+FONT = next((path for path in (
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+) if Path(path).is_file()), "DejaVuSans.ttf")
 NOW = datetime(2026, 11, 21, tzinfo=timezone.utc)
 LIVE = os.environ.get("SHADOW_LIVE_PROVIDERS") == "1"
 
@@ -71,6 +77,36 @@ def inbox_image(names):
 
 @unittest.skipUnless(LIVE, "set SHADOW_LIVE_PROVIDERS=1 to call Gemini and OpenAI")
 class ProviderTests(unittest.TestCase):
+    def test_chromium_to_saved_draft(self):
+        from tools.chromium_trial import local_fixture
+        from tools.screenshot_turn import main
+
+        self.assertTrue(gemini_keys() and openai_api_key())
+        with local_fixture("screenshot_drafts.html") as url:
+            for case in ("plain", "reel"):
+                with self.subTest(case=case), TemporaryDirectory() as directory:
+                    stdout = StringIO()
+                    with redirect_stdout(stdout):
+                        main(["--data-dir", directory, "--fixture", f"{url}?{case}"])
+                    result = json.loads(stdout.getvalue())
+                    self.assertEqual(result["outcome"], "draft", result)
+                    self.assertEqual(result["opened"], "row-1")
+                    self.assertEqual((result["sends"], result["reactions"]), (0, 0))
+                    with open_storage(directory) as storage:
+                        record = json.loads(storage.decisions_for(result["conversation_id"])[0]["record_json"])
+                        self.assertEqual(len(record["reply"]["messages"]), 1)
+                        self.assertEqual(storage.outbox_items(), [])
+                    if case == "plain":
+                        self.assertIsNone(record["media"])
+                        self.assertIn("chai", record["bubbles"][-1]["text"].lower())
+                    else:
+                        self.assertTrue(record["media"]["advanced"])
+                        self.assertGreaterEqual(record["media"]["distinct"], 2)
+                        self.assertIn("kite", json.dumps(record["media"]).lower())
+                        self.assertIsNone(record["media"]["speech"])
+                    print(json.dumps({"check": "chromium_saved_draft", "case": case,
+                                      "model": result["model"], "sends": 0, "reactions": 0}))
+
     def test_decision_transcription_reel_draft_and_fallback(self):
         keys = gemini_keys()
         openai = openai_api_key()

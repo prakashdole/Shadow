@@ -189,6 +189,41 @@ def ensure_schema(storage):
         "CREATE TABLE IF NOT EXISTS screenshot_media ("
         "cache_key TEXT PRIMARY KEY, summary_json TEXT NOT NULL)")
 
+    storage.conn.execute(
+        "CREATE TABLE IF NOT EXISTS screenshot_inbox_retry ("
+        "account_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, attempts INTEGER NOT NULL)")
+
+
+def claim_inbox_retry(storage, account_id):
+    """An opened message can stop being unread before transcription succeeds."""
+    ensure_schema(storage)
+    with storage.transaction() as conn:
+        row = conn.execute(
+            "SELECT thread_id, attempts FROM screenshot_inbox_retry WHERE account_id = ?",
+            (account_id,)).fetchone()
+        if row is None:
+            return None
+        if row["attempts"] >= 3:
+            conn.execute("DELETE FROM screenshot_inbox_retry WHERE account_id = ?", (account_id,))
+            return None
+        conn.execute("UPDATE screenshot_inbox_retry SET attempts = attempts + 1 WHERE account_id = ?",
+                     (account_id,))
+        return row["thread_id"]
+
+
+def finish_inbox_turn(storage, account_id, result):
+    if result["outcome"] in ("login", "paused"):
+        return
+    retry = result["outcome"] in ("pending", "wait", "stale") or result.get("recapture")
+    if retry:
+        cursor = storage.conn.execute(
+            "DELETE FROM screenshot_inbox_retry WHERE account_id = ? AND attempts >= 3",
+            (account_id,))
+        if cursor.rowcount:
+            result["inbox_retry_exhausted"] = True
+    else:
+        storage.conn.execute("DELETE FROM screenshot_inbox_retry WHERE account_id = ?", (account_id,))
+
 
 def remember(storage, conversation_id, fingerprint_value):
     ensure_schema(storage)
@@ -482,7 +517,7 @@ def _bubble(order, side, text, media=None):
 
 
 def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sleep=None,
-             expected_thread_id=None):
+             expected_thread_id=None, track_inbox=False):
     runtime = storage.get_runtime() or {}
     if runtime.get("pause_reason"):
         return _done(outcome="paused", reason=runtime["pause_reason"])
@@ -505,6 +540,12 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
         return _done(outcome="hold", reason="wrong_thread", recapture=True)
     if screen == "inbox":
         opened = act(browser, vision, task=TASK_ROW, sleep=sleep)
+        thread = thread_id_of(browser.page_url())
+        if track_inbox and thread:
+            ensure_schema(storage)
+            storage.conn.execute(
+                "INSERT OR REPLACE INTO screenshot_inbox_retry (account_id, thread_id, attempts) VALUES (?, ?, 1)",
+                (account_id, thread))
         if opened["outcome"] != "acted":
             return opened
         screen = "thread"
@@ -520,35 +561,38 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
     image = open_png(browser.screenshot())
     header = _header(image)
 
-    def read_thread(frame):
+    def thread_crop(frame):
         current = browser.page_url()
         if thread_id_of(current) != thread_id or _header(frame) != header or classify(frame, current) != "thread":
             return None
-        result = parse_transcript(vision.transcribe(png_bytes(frame.crop(thread_box(frame)))))
-        if thread_id_of(browser.page_url()) != thread_id:
-            return None
-        return result
+        return png_bytes(frame.crop(thread_box(frame)))
 
+    crop = thread_crop(image)
+    if crop is None:
+        return _done(outcome="hold", reason="wrong_thread", recapture=True)
     try:
-        transcript = read_thread(image)
+        transcript = parse_transcript(vision.transcribe(crop))
     except ProviderFailure as exc:
         return _done(outcome="pending", reason=exc.code, recapture=True)
     except (ValueError, TypeError):
-        return _done(outcome="hold", reason="unreadable")
-    if transcript is None:
-        return _done(outcome="hold", reason="wrong_thread", recapture=True)
+        return _done(outcome="hold", reason="unreadable", recapture=True)
     if transcript["incomplete"]:
         return _done(outcome="wait", reason="incomplete_transcript", recapture=True)
+    if thread_crop(open_png(browser.screenshot())) != crop:
+        return _done(outcome="wait", reason="transcript_capture_changed", recapture=True)
     bubbles = transcript["bubbles"]
     media = None
 
     def reread():
-        fresh = read_thread(open_png(browser.screenshot()))
+        fresh = thread_crop(open_png(browser.screenshot()))
         if fresh is None:
             return None
-        if fresh["incomplete"]:
-            raise ValueError("incomplete transcript")
-        return fresh["bubbles"]
+        if fresh == crop:
+            return bubbles
+        observed = parse_transcript(vision.transcribe(fresh))
+        if observed["incomplete"] or thread_crop(open_png(browser.screenshot())) != fresh:
+            raise ValueError("unverified transcript")
+        return observed["bubbles"]
 
     if not evidence_problem(bubbles, {"advanced": True}) and needs_reel(bubbles):
         started = act(browser, vision, task=TASK_REEL, sleep=sleep)

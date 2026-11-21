@@ -39,8 +39,8 @@ def fixture_value(browser, expression):
 
 
 @contextmanager
-def local_fixture():
-    html = (ROOT / "tests/fixtures/browser_inbox.html").read_bytes()
+def local_fixture(filename="browser_inbox.html"):
+    html = (ROOT / "tests/fixtures" / filename).read_bytes()
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):

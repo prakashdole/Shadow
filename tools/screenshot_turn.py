@@ -13,8 +13,9 @@ from shadow.chromium import BrowserError, chromium, find_chromium, profile_path
 from shadow.gemini_client import gemini_keys
 from shadow.model_openai import openai_api_key
 from shadow.screenshot_loop import (
-    TASK_CLOSE, TASK_NAMES, TASK_REEL, TASK_ROW, LiveVision, act, classify, gemini_fallback,
-    offer, openai_primary, open_png, run_turn, sample_player, thread_id_of, utcnow,
+    TASK_CLOSE, TASK_NAMES, TASK_REEL, TASK_ROW, LiveVision, act, claim_inbox_retry, classify,
+    finish_inbox_turn, gemini_fallback, offer, openai_primary, open_png, run_turn, sample_player,
+    thread_id_of, utcnow,
 )
 from shadow.settings import data_dir
 from shadow.storage import open_storage
@@ -277,17 +278,23 @@ def main(argv=None):
     vision = LiveVision(keys)
     profile = args.profile or (profile_path() if args.live else directory / "profile")
     with open_storage(directory) as storage, chromium(binary, profile) as browser:
+        auto = args.live and not args.thread
+        state = storage.get_runtime() or {}
+        tracking = auto and not state.get("pause_reason") and state.get("account_id") in (None, "", args.account)
+        expected = args.thread or (claim_inbox_retry(storage, args.account) if tracking else None)
         if args.fixture:
             browser.navigate(args.fixture)
             time.sleep(0.5)
         else:
-            url = (f"https://www.instagram.com/direct/t/{args.thread}/" if args.thread
+            url = (f"https://www.instagram.com/direct/t/{expected}/" if expected
                    else "https://www.instagram.com/direct/inbox/")
             browser.navigate(url)
             time.sleep(2)
         result = run_turn(browser, vision, storage, account_id=args.account, now=utcnow(),
                           primary=openai_primary(key), fallback=gemini_fallback(keys),
-                          expected_thread_id=args.thread)
+                          expected_thread_id=expected, track_inbox=tracking and expected is None)
+        if tracking:
+            finish_inbox_turn(storage, args.account, result)
         if args.show_draft and result.get("decision_id"):
             row = storage.decisions_for(result["conversation_id"])
             record = json.loads(row[-1]["record_json"])
