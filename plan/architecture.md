@@ -15,10 +15,10 @@ flowchart TD
     Router -->|Named choice| Control[Coordinator checks screen and target]
     Control -->|One verified tap| Browser
     Control -->|Text turn| OCR[Local OCR with bubble positions]
-    OCR -->|Ambiguous layout| Reader[Small vision reader]
+    OCR -->|Visual context needed| Crop[Keep original chat crop]
     Control -->|Shared reel| Media[Capture caption and timed frames or clip]
     OCR --> Context[Assemble one conversation turn]
-    Reader --> Context
+    Crop --> Context
     Media --> Context
     Context --> Reply[Main multimodal reply model]
     Reply --> Draft[Store draft for owner review]
@@ -38,7 +38,7 @@ For example, an annotated screenshot might contain a chat header, two reel cards
 | --- | --- |
 | Browser adapter | Obscura is the first candidate after the API trial. Exercise its render-enabled screenshot and mouse-input support directly. Verify actual login persistence, view geometry, typing and reel playback on the target machine. [Obscura protocol support](https://github.com/h4ckf0r0day/obscura#cdp-api) |
 | Screen decision | Give `gemini-decision-1` one image, a task and bounded questions. Use the winning choice and its confidence for routing. The API supports independent choice, yes/no and scoring questions on shared multimodal input. [Google Decisions API](https://blog.google/innovation-and-ai/technology/developers-tools/gemini-decisions-api/) |
-| Text and media readers | Local OCR supplies text plus geometry. A small vision model resolves difficult layout or quotes. Reel evidence goes directly to the main model with the sender’s text, caption and any available audio. |
+| Text and media inputs | Local OCR supplies text and geometry. If a quote, emoji or layout needs visual interpretation, the main reply model receives the original chat crop in the same request as the available text. Reel evidence goes to the same model with the sender’s text, caption and any available audio. |
 | Coordinator and storage | Reuse the account scope, pause, revision and SQLite transaction concepts in `shadow/coordinator.py` and `shadow/storage.py`. Check their current identity assumptions before admitting screenshot observations. |
 | Reply and owner review | Reuse scoped memory, quality checks, approvals and the outbox where their contracts hold. Browser actions belong to the coordinator. Models receive conversation content as data and have no authority to send. |
 

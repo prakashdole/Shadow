@@ -20,11 +20,11 @@ Then exercise a read-only Instagram session with an appropriate test account. Ch
 
 ## 3. Establish what Shadow can read
 
-Run local OCR on labeled chat crops. Score literal text, order, sender, quotes and the association between a card and an accompanying message. Compare OCR alone with selective use of a small vision model on the same examples. Include Hinglish, emoji, clipped bubbles, repeated text and screenshots with multiple speakers.
+Run local OCR on labeled chat crops. Score literal text, order, sender, quotes and the association between a card and an accompanying message. On difficult cases, compare drafts made from OCR text with drafts made using the same text and the original crop in one main model request. Include Hinglish, emoji, clipped bubbles, repeated text and screenshots with multiple speakers.
 
 For reels, compare 1-, 2- and 4-second intervals on the same clips. Include fast captions, a late reveal, an audio-dependent joke, a stalled player and an unavailable reel. Compare frames with a short clip containing audio when capture works. Have the owner judge the reply against the actual reel and the sender’s question. Record evidence missed, cost per turn and time to a usable draft.
 
-**To pass**, select the simplest extraction route and sampling policy that preserve the references the owner cares about. Record which cases require more evidence or a hold. Choose the small reader and main reply model from these results.
+**To pass**, identify when OCR supplies enough context and when an image improves the draft. Select the reel sampling policy and main reply model from these results. Record which cases require more evidence or a hold.
 
 ## 4. Integrate a draft-only loop
 
@@ -44,7 +44,7 @@ Measure which drafts the owner accepts, edits or skips. If assisted sending is p
 | --- | --- | --- |
 | Browser interaction | Screenshots, coordinate input and post-action verification. Obscura is the first candidate. | Browser trial after the API test |
 | Target selection | Prefer a small preset action vocabulary with calibrated fixed controls and per-frame targets for moving content. | Compare targeting errors and hold rates in phases 1–2 |
-| Text extraction | Try local OCR first and a small vision model on difficult cases. | Transcript and attribution comparison in phase 3 |
+| Text extraction | Use local OCR and include the original crop in the main reply request when visual context matters. | Transcript, attribution and draft comparison in phase 3 |
 | Reel context | Send ordered samples and the associated chat directly to the main model. Audio and interval are experimental. | Owner-rated reel comparison in phase 3 |
 | Existing project | Keep the uv-managed Python project, local memory, voice work and owner controls. Replace the observation path incrementally. | Verify each reused contract during integration |
 
