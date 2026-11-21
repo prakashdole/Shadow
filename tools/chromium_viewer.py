@@ -113,9 +113,10 @@ def operate(browser, event):
         key = event.get("value")
         keys = {"Backspace": 8, "Tab": 9, "Enter": 13, "Escape": 27}
         if isinstance(key, str) and key in keys:
-            for kind in ("keyDown", "keyUp"):
-                browser.command("Input.dispatchKeyEvent", type=kind, key=key, code=key,
-                                windowsVirtualKeyCode=keys[key])
+            params = {"key": key, "code": key, "windowsVirtualKeyCode": keys[key]}
+            text = "\r" if key == "Enter" else ""
+            browser.command("Input.dispatchKeyEvent", type="keyDown", text=text, **params)
+            browser.command("Input.dispatchKeyEvent", type="keyUp", **params)
             return
     raise ValueError("Invalid input.")
 

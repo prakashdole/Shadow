@@ -504,6 +504,24 @@ class PolicyTests(unittest.TestCase):
 
 
 class FixtureTests(unittest.TestCase):
+    def test_login_viewer_enter_submits_the_focused_form(self):
+        from urllib.parse import quote
+
+        from shadow.chromium import chromium, find_chromium
+        from tools.chromium_trial import fixture_value, wait_for
+        from tools.chromium_viewer import operate
+
+        form = (
+            '<form onsubmit="event.preventDefault(); window.submitted = true">'
+            '<input type="password" autofocus aria-label="Fixture code"><button>Submit</button></form>'
+        )
+        with TemporaryDirectory() as directory, chromium(find_chromium(), directory) as browser:
+            browser.navigate("data:text/html," + quote(form))
+            wait_for(browser, "document.activeElement.type === 'password'", "login fixture ready")
+            operate(browser, {"action": "text", "value": "fixture-code"})
+            operate(browser, {"action": "key", "value": "Enter"})
+            self.assertTrue(fixture_value(browser, "window.submitted === true"))
+
     def test_fixture_turn_and_coordinate_click(self):
         from shadow.chromium import chromium, find_chromium
         from tools.chromium_trial import fixture_value, local_fixture, wait_for
