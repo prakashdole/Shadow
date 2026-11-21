@@ -42,3 +42,14 @@ uv run --locked --extra obscura python tools/obscura_login.py
 Open the localhost address printed by the command. Click inside Instagram's preview, enter your login there and complete any verification. When your inbox is visible, use **Save session and close viewer**. The viewer forwards inputs locally and has no model calls. Use the same command to reopen the same profile.
 
 Obscura keeps cookies and local storage under `~/Library/Application Support/Shadow/obscura-instagram`. Instagram can still expire your session. Browser session storage belongs to the open tab, and the profile has no verified persistent HTTP cache. [Obscura storage documentation](https://github.com/h4ckf0r0day/obscura/blob/main/docs/Persist-cookies-and-storage.md)
+
+### Sign in through Chrome on the same Mac
+
+Close the Obscura viewer first. Run the pairing helper with the path to a Chrome or Chrome for Testing executable.
+
+```sh
+uv run --locked --extra obscura python -m tools.obscura_pair \
+  --chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+```
+
+Sign in on Instagram in the separate Chrome window within five minutes. Shadow transfers Instagram cookies from that temporary browser profile over loopback and checks the inbox route in a temporary Obscura profile before saving to the regular one. This flow uses no model calls. Instagram may reject the session in Obscura even when Chrome is signed in.
