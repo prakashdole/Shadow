@@ -1,4 +1,4 @@
-"""Run one screenshot draft turn. This entry point cannot send or publish a reaction."""
+"""Run one screenshot turn with optional delivery to an exact thread."""
 
 import argparse
 import json
@@ -10,6 +10,7 @@ import time
 from dotenv import load_dotenv
 
 from shadow.chromium import BrowserError, chromium, find_chromium, profile_path
+from shadow.chromium_send import deliver
 from shadow.gemini_client import gemini_keys
 from shadow.model_openai import openai_api_key
 from shadow.screenshot_loop import (
@@ -217,6 +218,8 @@ def main(argv=None):
     parser.add_argument("--allow-live-model", action="store_true",
                         help="Process live chat content with the configured models. Use provider projects approved for that data.")
     parser.add_argument("--thread", help="Numeric Instagram thread ID for an owner-selected old or current conversation.")
+    parser.add_argument("--send", action="store_true", help="Deliver a verified draft to the specified thread.")
+    parser.add_argument("--send-text", help="Deliver one owner-directed message to the specified thread.")
     parser.add_argument("--resume-login", action="store_true", help="Clear a login pause after verifying a signed-in inbox.")
     parser.add_argument("--show-draft", action="store_true", help="Print the saved draft text locally.")
     parser.add_argument("--measure", action="store_true", help="Print startup, capture and memory, then exit.")
@@ -229,6 +232,10 @@ def main(argv=None):
         parser.error("--allow-live-model requires --live.")
     if args.thread and (not args.live or not re.fullmatch(r"[0-9]+", args.thread)):
         parser.error("--thread requires --live and an exact numeric thread ID.")
+    if (args.send or args.send_text is not None) and (not args.thread or args.measure):
+        parser.error("Delivery requires --live and --thread.")
+    if args.send and (not args.allow_live_model or args.send_text is not None):
+        parser.error("--send uses a model draft and requires --allow-live-model.")
     if args.resume_login and (not args.live or args.allow_live_model or args.thread or args.measure):
         parser.error("--resume-login requires a read-only --live inbox check.")
     os.umask(0o077)
@@ -236,6 +243,21 @@ def main(argv=None):
     if directory == data_dir().resolve():
         parser.exit(2, "Refusing the observer database. Pass a separate --data-dir.\n")
     binary = args.browser or find_chromium()
+    if args.send_text is not None:
+        with open_storage(directory) as storage, chromium(binary, args.profile or profile_path()) as browser:
+            runtime = storage.get_runtime() or {}
+            if runtime.get("pause_reason") or runtime.get("account_id") not in (None, "", args.account):
+                parser.error("Delivery is paused or bound to another account.")
+            conversation = storage.get_or_create_conversation(args.account, args.thread)
+            browser.navigate(f"https://www.instagram.com/direct/t/{args.thread}/")
+            _settle(browser, 8)
+            decision = storage.add_decision(conversation_id=conversation, source_revision=0,
+                                            record_json=json.dumps({"owner_command": True}), versions_json="{}")
+            result = deliver(browser, storage, thread=args.thread, decision=decision,
+                             conversation=conversation, revision=0, text=args.send_text,
+                             authority="owner_command")
+        print(json.dumps(result))
+        return
     if args.measure:
         started = time.monotonic()
         profile = args.profile or (directory / "measure-profile")
@@ -298,10 +320,16 @@ def main(argv=None):
                           expected_thread_id=expected, track_inbox=tracking and expected is None)
         if tracking:
             finish_inbox_turn(storage, args.account, result)
-        if args.show_draft and result.get("decision_id"):
+        if (args.show_draft or args.send) and result.get("decision_id"):
             row = storage.decisions_for(result["conversation_id"])
-            record = json.loads(row[-1]["record_json"])
-            result = {**result, "messages": record["reply"]["messages"]}
+            saved = next(entry for entry in row if entry["id"] == result["decision_id"])
+            messages = json.loads(saved["record_json"])["reply"]["messages"]
+            if args.send and result["outcome"] == "draft":
+                result.update(deliver(browser, storage, thread=args.thread, decision=result["decision_id"],
+                                      conversation=result["conversation_id"], revision=result["revision"],
+                                      text=messages[0], authority="owner_approved"))
+            if args.show_draft:
+                result["messages"] = messages
     print(json.dumps({key: value for key, value in result.items() if key != "bubbles"}))
 
 

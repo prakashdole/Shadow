@@ -1,14 +1,13 @@
 """Offline and fixture checks for the screenshot draft loop."""
 
-import ast
 import json
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Thread
 import unittest
+from unittest.mock import patch
 
 from PIL import Image, ImageDraw
 
@@ -22,7 +21,6 @@ from shadow.targets import classify, offer, thread_box
 from shadow.viewport import crop_resize, open_png, png_bytes, region_stable
 
 NOW = datetime(2026, 11, 21, tzinfo=timezone.utc)
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def bubble(order, side, text, media=None, unreadable=False, clipped=False):
@@ -524,12 +522,29 @@ class PolicyTests(unittest.TestCase):
 
         generate(model="gemini-3.1-flash-lite", parts=[], keys=["old", "new"], call=call, sleep=lambda _s: None)
 
-    def test_entry_point_cannot_send(self):
-        for path in (ROOT / "shadow/screenshot_loop.py", ROOT / "tools/screenshot_turn.py"):
-            tree = ast.parse(path.read_text())
-            names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
-            names.update(node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute))
-            self.assertTrue(names.isdisjoint({"send_one", "add_outbox_item", "confirm_send", "enqueue_owner_send"}))
+    def test_send_confirms_after_reload_and_does_not_repeat(self):
+        from shadow.chromium_send import deliver
+
+        thread_url = "https://www.instagram.com/direct/t/101/"
+        browser = unittest.mock.Mock()
+        browser.page_url.return_value = thread_url
+        directory, storage = store()
+        self.addCleanup(directory.cleanup)
+        self.addCleanup(storage.close)
+        conversation = storage.get_or_create_conversation("account", "101")
+        decision = storage.add_decision(conversation_id=conversation, source_revision=0,
+                                        record_json="{}", versions_json="{}")
+        with patch("shadow.chromium_send._controls", side_effect=[
+            {"composer": [800, 660], "text": "", "copies": 0}, {"focused": True},
+            {"text": "hello", "send": [1210, 660]}, {"copies": 1}, {"copies": 1, "text": ""},
+        ]):
+            args = dict(thread="101", decision=decision, conversation=conversation, revision=0,
+                        text="hello", authority="owner_command")
+            self.assertEqual(deliver(browser, storage, **args), {"delivery": "confirmed", "sends": 1})
+            self.assertEqual(deliver(browser, storage, **args), {"delivery": "prior_attempt", "sends": 0})
+        browser.navigate.assert_called_once_with(thread_url)
+        self.assertEqual(browser.click.call_count, 2)
+        self.assertEqual(storage.outbox_items(conversation)[0]["state"], "confirmed")
 
     def test_transcript_keeps_duplicates_and_rejects_a_bad_shape(self):
         parsed = parse_transcript({"bubbles": [bubble(1, "left", "haan"), bubble(2, "left", "haan")],

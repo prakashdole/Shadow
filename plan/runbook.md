@@ -1,6 +1,6 @@
 # Screenshot draft runbook
 
-The viewport is fixed at **1280×720**, device scale **1**. One turn ends at a saved draft. This entry point cannot send, approve delivery, or publish a reaction.
+The viewport is fixed at **1280×720**, device scale **1**. A normal turn ends at a saved draft. Add `--send` to a targeted live model turn to deliver a newly verified draft. Use `--send-text` with a targeted live turn for one owner-directed message.
 
 ## Setup
 
@@ -44,6 +44,8 @@ uv run --locked --extra browser python -m tools.screenshot_turn \
 This browser-only probe reopens the profile, opens existing inbox rows by verified position, and checks whether a text thread loads and shared media plays. Opening a thread can mark it as read. The probe skips model requests.
 
 To check one old conversation, pass `--thread THREAD_ID` with the numeric ID from its Instagram URL. A redirected thread fails verification. With `--allow-live-model`, a targeted turn sends the verified conversation crop and applicable reel frames to Gemini and sends structured transcript and media context to the reply model. An untargeted turn also uses the inbox screenshot to select a visibly unread row. Gemini API projects used for private messages, including backup keys, need active Cloud Billing. [Gemini API terms](https://ai.google.dev/gemini-api/terms)
+
+Delivery clicks the visible Send control once and confirms the message after reopening the exact conversation. The database records the attempt before clicking. If the message cannot be confirmed, check the thread before resolving the `uncertain` outbox item. The scheduled service prepares drafts.
 
 ## Measured locally
 
