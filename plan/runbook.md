@@ -49,7 +49,7 @@ To check one old conversation, pass `--thread THREAD_ID` with the numeric ID fro
 
 Delivery clicks the visible Send control once and confirms the message after reopening the exact conversation. The database records the attempt before the click. An optimistic bubble in the current page is not confirmation. If the message cannot be confirmed, the outbox item stays `uncertain` and is not sent again. The next in-hours check reloads that thread and confirms the item only when the fresh document shows exactly one copy.
 
-The scheduled unit is `shadow-drafts.service`, started by `shadow-drafts.timer`. It runs `tools.screenshot_turn --live --allow-live-model --deliver`. One check handles at most three chats: unfinished opened threads first, then the oldest visibly unread row. Stories, reactions, groups, and contacts that are not `known` or `approved_unknown` are held with no send. A second process exits as `overlap` because the database lock is exclusive.
+The scheduled unit is `shadow-drafts.service`, started by `shadow-drafts.timer`. It runs `tools.screenshot_turn --live --allow-live-model --deliver`. One check handles at most three chats, starting with unfinished opened threads and then the oldest visibly unread row. Any unread personal or group chat in the inbox can receive a reply on its first visit. The worker still skips stories, reaction-only events, and conversations the owner has paused. A second process exits as `overlap` because the database lock is exclusive.
 
 ## Measured locally
 

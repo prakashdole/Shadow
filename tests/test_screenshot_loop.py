@@ -744,11 +744,6 @@ class DeliveryTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.day = datetime(2026, 11, 22, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
 
-    def _approve(self, thread="101"):
-        conversation = self.storage.get_or_create_conversation("acct", thread)
-        self.storage.set_contact_status(conversation, "approved_unknown", evidence="test")
-        return conversation
-
     def test_playback_noise_is_the_same_turn_and_a_new_line_is_not(self):
         before = [bubble(1, "left", "yaar yeh reel dekha?", "reel")]
         noisy = [bubble(1, "left", "yaar  yeh reel dekha?"), bubble(2, "right", "Seen")]
@@ -798,8 +793,7 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(again["reason"], "already_replied")
         self.assertEqual(again["decision_id"], first["decision_id"])
 
-    def test_one_reply_is_delivered_for_an_approved_chat(self):
-        self._approve()
+    def test_first_reply_is_delivered_without_contact_approval(self):
         image = paint(["First message in the open conversation", "Second message in the open conversation",
                        "Third message in the open conversation"], column="thread")
         browser = Shots([image], url="https://www.instagram.com/direct/t/101/")
@@ -817,28 +811,32 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(sent[0]["text"], "haan")
         self.assertEqual(sent[0]["authority"], "autonomous")
         self.assertEqual(len(sent), 1)
+        self.assertEqual(self.storage.get_conversation(result["conversation_id"])["contact_status"],
+                         "unknown_pending")
 
-    def test_group_and_unknown_contact_hold_without_a_model(self):
+    def test_old_group_blocks_are_removed_but_owner_pause_is_kept(self):
         image = paint(["First message in the open conversation", "Second message in the open conversation",
                        "Third message in the open conversation"], column="thread")
 
-        class GroupShots(Shots):
-            def command(self, method, **params):
-                return {"result": {"value": {"links": 3, "avatars": 2}}}
+        browser = Shots([image], url="https://www.instagram.com/direct/t/101/")
+        conversation = self.storage.get_or_create_conversation("acct", "101")
+        self.storage.set_paused_reason(conversation, "group_uncertain")
+        sends = []
 
-        group = run_turn(GroupShots([image], url="https://www.instagram.com/direct/t/101/"), Vision(),
-                         self.storage, account_id="acct", now=self.day,
-                         primary=lambda *_: (_ for _ in ()).throw(AssertionError("model")), fallback=None,
-                         deliver=lambda **_: (_ for _ in ()).throw(AssertionError("send")))
-        self._approve()
-        self.assertEqual(group["reason"], "ineligible_contact")
-        conversation = self.storage.get_conversation_by_thread("acct", "101")
-        self.storage.set_paused_reason(conversation["id"], None)
-        grouped = run_turn(GroupShots([image], url="https://www.instagram.com/direct/t/101/"), Vision(),
-                           self.storage, account_id="acct", now=self.day,
-                           primary=lambda *_: (_ for _ in ()).throw(AssertionError("model")), fallback=None,
-                           deliver=lambda **_: (_ for _ in ()).throw(AssertionError("send")))
-        self.assertEqual(grouped["reason"], "group")
+        def send(_browser, _storage, **kwargs):
+            sends.append(kwargs["thread"])
+            return {"delivery": "confirmed", "sends": 1}
+
+        def run(**options):
+            return run_turn(browser, Vision(), self.storage, account_id="acct", now=self.day,
+                            primary=lambda *_: (reply("haan"), {}), fallback=None, deliver=send, **options)
+
+        self.assertEqual(run(allow_threads=["202"])["reason"], "not_authorized")
+        self.assertEqual(run()["delivery"], "confirmed")
+        self.assertIsNone(self.storage.get_conversation(conversation)["paused_reason"])
+        self.storage.set_paused_reason(conversation, "owner_pause")
+        self.assertEqual(run()["reason"], "owner_pause")
+        self.assertEqual(sends, ["101"])
 
     def test_outside_hours_does_not_open_the_inbox(self):
         from zoneinfo import ZoneInfo
@@ -862,7 +860,7 @@ class DeliveryTests(unittest.TestCase):
 
     def test_uncertain_restart_confirms_or_holds_without_a_second_click(self):
         from shadow.chromium_send import deliver, reconcile
-        conversation = self._approve()
+        conversation = self.storage.get_or_create_conversation("acct", "101")
         decision = self.storage.add_decision(conversation_id=conversation, source_revision=1,
                                              record_json="{}", versions_json="{}")
         item = self.storage.add_outbox_item(decision_id=decision, item_index=0, conversation_id=conversation,
@@ -893,7 +891,7 @@ class DeliveryTests(unittest.TestCase):
 
     def test_hours_close_after_typing_does_not_submit(self):
         from shadow.chromium_send import deliver
-        conversation = self._approve()
+        conversation = self.storage.get_or_create_conversation("acct", "101")
         decision = self.storage.add_decision(conversation_id=conversation, source_revision=1,
                                              record_json="{}", versions_json="{}")
         browser = unittest.mock.Mock()

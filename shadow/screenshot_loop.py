@@ -239,6 +239,8 @@ def reply_system(storage=None, conversation_id=None):
              "If essential evidence is missing, use action skip and messages []. "
              "When the contact asks for spoken words, a quote from audio, or other audio details "
              "that the supplied evidence does not establish, return action skip with messages []. "
+             "Incoming messages in a group may be from different people. Respond to the latest "
+             "incoming turn without guessing who wrote it or attributing earlier messages to that person. "
              "Keep the reason in reason_code. A skip never contains a chat message. "
              "action hold means the same as skip. Do not invent prices, times, names or speech.")
     return "\n\n".join((voice_text(), *extra, rules))
@@ -645,49 +647,18 @@ def _bubble(order, side, text, media=None):
             "unreadable": False, "clipped": False}
 
 
-def thread_shape(browser):
-    """True when the open header is a group, False for a direct chat, None when unsure."""
-    if not hasattr(browser, "command"):
-        return False
-    try:
-        value = browser.command(
-            "Runtime.evaluate", returnByValue=True, expression=r"""
-            (() => {
-              const links = [...document.querySelectorAll('a[href]')].filter(a => {
-                const r = a.getBoundingClientRect();
-                const href = a.getAttribute('href') || '';
-                return r.width > 0 && r.height > 0 && r.x > 370 && r.y < 160 && /^\/[^/]+\/?$/.test(href);
-              });
-              return {links: links.length, avatars: links.filter(a => a.querySelector('img')).length};
-            })()
-            """)["result"].get("value") or {}
-    except (OSError, KeyError, TypeError, RuntimeError):
-        return None
-    links, avatars = int(value.get("links") or 0), int(value.get("avatars") or 0)
-    if links >= 3 or avatars >= 2:
-        return True
-    if 1 <= links <= 2 and avatars == 1:
-        return False
-    return None
-
-
-def _delivery_block(browser, storage, account_id, thread_id, allow_threads):
+def _delivery_block(storage, account_id, thread_id, allow_threads):
     if allow_threads is not None and thread_id not in set(allow_threads):
         return _done(outcome="hold", reason="not_authorized", thread_id=thread_id)
     conversation_id = storage.get_or_create_conversation(account_id, thread_id)
     conversation = storage.get_conversation(conversation_id)
-    if conversation.get("paused_reason"):
-        return _done(outcome="paused", reason=conversation["paused_reason"], thread_id=thread_id,
+    reason = conversation.get("paused_reason")
+    if reason in ("group", "group_uncertain"):
+        # Clear the old worker's automatic group block while preserving owner pauses.
+        storage.set_paused_reason(conversation_id, None)
+    elif reason:
+        return _done(outcome="paused", reason=reason, thread_id=thread_id,
                      conversation_id=conversation_id)
-    if conversation["contact_status"] not in ("known", "approved_unknown"):
-        _pending(storage, conversation_id, 0, "ineligible_contact")
-        return _done(outcome="hold", reason="ineligible_contact", thread_id=thread_id,
-                     conversation_id=conversation_id)
-    shape = thread_shape(browser)
-    if shape is not False:
-        reason = "group" if shape else "group_uncertain"
-        storage.set_paused_reason(conversation_id, reason)
-        return _done(outcome="hold", reason=reason, thread_id=thread_id, conversation_id=conversation_id)
     return None
 
 
@@ -752,7 +723,7 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
     if not thread_id:
         return _done(outcome="hold", reason="unbound_thread")
     if deliver is not None:
-        blocked = _delivery_block(browser, storage, account_id, thread_id, allow_threads)
+        blocked = _delivery_block(storage, account_id, thread_id, allow_threads)
         if blocked:
             blocked["opened"] = opened["action"] if opened else None
             return blocked
