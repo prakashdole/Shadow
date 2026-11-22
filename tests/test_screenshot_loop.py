@@ -4,17 +4,20 @@ import json
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Thread
 import unittest
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageDraw
 
 from shadow.gemini_client import ProviderFailure, generate
 from shadow.screenshot_loop import (
-    HEADER, TASK_CLOSE, TASK_NAMES, TASK_REEL, TASK_ROW, act, claim_inbox_retry, draft_and_save,
-    evidence_problem, fingerprint, finish_inbox_turn, parse_transcript, run_turn, sample_interval, sample_player,
+    HEADER, TASK_CLOSE, TASK_NAMES, TASK_REEL, TASK_ROW, act, claim_inbox_retry, claim_next,
+    draft_and_save, evidence_problem, fingerprint, finish_inbox_turn, note_opened, parse_transcript,
+    run_check, run_turn, sample_interval, sample_player, turn_change, within_hours,
 )
 from shadow.storage import open_storage
 from shadow.targets import classify, offer, thread_box
@@ -715,6 +718,200 @@ class OwnerTests(unittest.TestCase):
                                 primary=lambda *_args: (_ for _ in ()).throw(AssertionError()),
                                 fallback=None, now=NOW)
         self.assertEqual(result["reason"], "owner_active")
+
+
+class HoursTests(unittest.TestCase):
+    def test_india_daytime_boundaries(self):
+        from zoneinfo import ZoneInfo
+        ist = ZoneInfo("Asia/Kolkata")
+        self.assertFalse(within_hours(datetime(2026, 11, 22, 5, 59, tzinfo=ist)))
+        self.assertTrue(within_hours(datetime(2026, 11, 22, 6, 0, tzinfo=ist)))
+        self.assertTrue(within_hours(datetime(2026, 11, 22, 23, 50, tzinfo=ist)))
+        self.assertFalse(within_hours(datetime(2026, 11, 22, 0, 0, tzinfo=ist)))
+        root = Path(__file__).resolve().parents[1]
+        timer = (root / "deploy/shadow-drafts.timer").read_text()
+        service = (root / "deploy/shadow-drafts.service").read_text()
+        self.assertIn("*-*-* 06..23:00/10:00 Asia/Kolkata", timer)
+        self.assertIn("Persistent=false", timer)
+        self.assertNotIn("OnUnitInactiveSec", timer)
+        self.assertIn("--deliver", service)
+
+
+class DeliveryTests(unittest.TestCase):
+    def setUp(self):
+        self.directory, self.storage = store()
+        self.addCleanup(self.storage.close)
+        self.addCleanup(self.directory.cleanup)
+        self.day = datetime(2026, 11, 22, 10, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+
+    def _approve(self, thread="101"):
+        conversation = self.storage.get_or_create_conversation("acct", thread)
+        self.storage.set_contact_status(conversation, "approved_unknown", evidence="test")
+        return conversation
+
+    def test_playback_noise_is_the_same_turn_and_a_new_line_is_not(self):
+        before = [bubble(1, "left", "yaar yeh reel dekha?", "reel")]
+        noisy = [bubble(1, "left", "yaar  yeh reel dekha?"), bubble(2, "right", "Seen")]
+        self.assertIsNone(turn_change(before, noisy))
+        self.assertEqual(turn_change(before, before + [bubble(2, "left", "aur ek")]), "stale_turn")
+        self.assertEqual(turn_change(before, before + [bubble(2, "right", "maine dekh liya")]), "owner_answered")
+        calls = []
+
+        def primary(system, user):
+            calls.append(user)
+            return reply("dekha"), {"model": "gpt-4o-mini"}
+
+        saved = draft_and_save(self.storage, account_id="acct", thread_id="101", bubbles=before, media={
+            "advanced": True, "stalled": False, "audio": False, "speech": None}, primary=primary,
+            fallback=None, now=self.day, reread=lambda: noisy)
+        self.assertEqual(saved["outcome"], "draft")
+        self.assertEqual(len(calls), 1)
+
+    def test_owner_reply_and_reaction_do_not_send(self):
+        before = [bubble(1, "left", "hi")]
+        owner = draft_and_save(self.storage, account_id="acct", thread_id="101", bubbles=before, media=None,
+                               primary=lambda *_: (reply(), {}), fallback=None, now=self.day,
+                               reread=lambda: before + [bubble(2, "right", "answered")])
+        self.assertEqual(owner["reason"], "owner_answered")
+        self.assertEqual(self.storage.conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0], 0)
+        reaction = draft_and_save(self.storage, account_id="acct", thread_id="101",
+                                  bubbles=[bubble(1, "left", "You reacted to a message")], media=None,
+                                  primary=lambda *_: (_ for _ in ()).throw(AssertionError("model")),
+                                  fallback=None, now=self.day)
+        self.assertEqual(reaction["reason"], "reaction")
+
+    def test_confirmed_text_is_not_drafted_again(self):
+        bubbles = [bubble(1, "left", "hi")]
+        first = draft_and_save(self.storage, account_id="acct", thread_id="101", bubbles=bubbles, media=None,
+                               primary=lambda *_: (reply("haan"), {"model": "gpt-4o-mini"}), fallback=None, now=self.day)
+        item = self.storage.add_outbox_item(decision_id=first["decision_id"], item_index=0,
+                                            conversation_id=first["conversation_id"], text="haan",
+                                            authority="autonomous", revision=first["revision"])
+        self.storage.transition(item, "attempting")
+        self.storage.confirm_send(item, {"text": "haan", "evidence": {"reloaded_thread": True}})
+        again = draft_and_save(self.storage, account_id="acct", thread_id="101",
+                               bubbles=[bubble(1, "left", "hi ")], media=None,
+                               primary=lambda *_: (_ for _ in ()).throw(AssertionError("again")),
+                               fallback=None, now=self.day)
+        self.assertEqual(again["reason"], "already_replied")
+        self.assertEqual(again["decision_id"], first["decision_id"])
+
+    def test_one_reply_is_delivered_for_an_approved_chat(self):
+        self._approve()
+        image = paint(["First message in the open conversation", "Second message in the open conversation",
+                       "Third message in the open conversation"], column="thread")
+        browser = Shots([image], url="https://www.instagram.com/direct/t/101/")
+        sent = []
+
+        def fake_deliver(browser, storage, **kwargs):
+            sent.append(kwargs)
+            return {"delivery": "confirmed", "sends": 1}
+
+        result = run_turn(browser, Vision(), self.storage, account_id="acct", now=self.day,
+                          primary=lambda *_: (reply("haan"), {"model": "gpt-4o-mini"}), fallback=None,
+                          deliver=fake_deliver)
+        self.assertEqual(result["delivery"], "confirmed")
+        self.assertEqual(result["sends"], 1)
+        self.assertEqual(sent[0]["text"], "haan")
+        self.assertEqual(sent[0]["authority"], "autonomous")
+        self.assertEqual(len(sent), 1)
+
+    def test_group_and_unknown_contact_hold_without_a_model(self):
+        image = paint(["First message in the open conversation", "Second message in the open conversation",
+                       "Third message in the open conversation"], column="thread")
+
+        class GroupShots(Shots):
+            def command(self, method, **params):
+                return {"result": {"value": {"links": 3, "avatars": 2}}}
+
+        group = run_turn(GroupShots([image], url="https://www.instagram.com/direct/t/101/"), Vision(),
+                         self.storage, account_id="acct", now=self.day,
+                         primary=lambda *_: (_ for _ in ()).throw(AssertionError("model")), fallback=None,
+                         deliver=lambda **_: (_ for _ in ()).throw(AssertionError("send")))
+        self._approve()
+        self.assertEqual(group["reason"], "ineligible_contact")
+        conversation = self.storage.get_conversation_by_thread("acct", "101")
+        self.storage.set_paused_reason(conversation["id"], None)
+        grouped = run_turn(GroupShots([image], url="https://www.instagram.com/direct/t/101/"), Vision(),
+                           self.storage, account_id="acct", now=self.day,
+                           primary=lambda *_: (_ for _ in ()).throw(AssertionError("model")), fallback=None,
+                           deliver=lambda **_: (_ for _ in ()).throw(AssertionError("send")))
+        self.assertEqual(grouped["reason"], "group")
+
+    def test_outside_hours_does_not_open_the_inbox(self):
+        from zoneinfo import ZoneInfo
+        night = datetime(2026, 11, 22, 5, 59, tzinfo=ZoneInfo("Asia/Kolkata"))
+
+        class Dead:
+            def navigate(self, url):
+                raise AssertionError(url)
+
+        result = run_check(Dead(), Vision(), self.storage, account_id="acct", now=night,
+                           primary=lambda *_: (_ for _ in ()).throw(AssertionError("model")),
+                           fallback=None, deliver=lambda **_: (_ for _ in ()).throw(AssertionError("send")))
+        self.assertEqual(result["outcome"], "outside_hours")
+        self.assertEqual(result["sends"], 0)
+
+    def test_queue_survives_a_cleared_badge(self):
+        note_opened(self.storage, "acct", "101")
+        self.assertEqual(claim_next(self.storage, "acct"), "101")
+        self.assertIsNone(claim_next(self.storage, "acct", skip={"101"}))
+        self.assertEqual(self.storage.get_work(self.storage.get_or_create_conversation("acct", "101")), None)
+
+    def test_uncertain_restart_confirms_or_holds_without_a_second_click(self):
+        from shadow.chromium_send import deliver, reconcile
+        conversation = self._approve()
+        decision = self.storage.add_decision(conversation_id=conversation, source_revision=1,
+                                             record_json="{}", versions_json="{}")
+        item = self.storage.add_outbox_item(decision_id=decision, item_index=0, conversation_id=conversation,
+                                            text="hello", authority="autonomous", revision=1)
+        self.storage.transition(item, "attempting")
+        self.assertEqual(self.storage.recover_after_restart(), 1)
+        browser = unittest.mock.Mock()
+        browser.page_url.return_value = "https://www.instagram.com/direct/t/101/"
+        with patch("shadow.chromium_send.sleep", lambda _seconds: None), patch(
+                "shadow.chromium_send._controls", side_effect=[
+                    {"documentStarted": 1},
+                    {"copies": 0, "text": "", "documentStarted": 2},
+                ]):
+            self.assertEqual(reconcile(browser, self.storage, self.storage.get_outbox_item(item), "101"), "held")
+        self.assertEqual(self.storage.get_outbox_item(item)["state"], "uncertain")
+        blocked = deliver(browser, self.storage, thread="101", decision=decision, conversation=conversation,
+                          revision=1, text="hello", authority="autonomous")
+        self.assertEqual(blocked, {"delivery": "prior_attempt", "sends": 0})
+        browser.click.assert_not_called()
+        with patch("shadow.chromium_send.sleep", lambda _seconds: None), patch(
+                "shadow.chromium_send._controls", side_effect=[
+                    {"documentStarted": 3},
+                    {"copies": 1, "text": "", "documentStarted": 4},
+                ]):
+            self.assertEqual(reconcile(browser, self.storage, self.storage.get_outbox_item(item), "101"), "confirmed")
+        self.assertEqual(self.storage.get_outbox_item(item)["state"], "confirmed")
+        browser.click.assert_not_called()
+
+    def test_hours_close_after_typing_does_not_submit(self):
+        from shadow.chromium_send import deliver
+        conversation = self._approve()
+        decision = self.storage.add_decision(conversation_id=conversation, source_revision=1,
+                                             record_json="{}", versions_json="{}")
+        browser = unittest.mock.Mock()
+        browser.page_url.return_value = "https://www.instagram.com/direct/t/101/"
+        calls = {"n": 0}
+
+        def allow():
+            calls["n"] += 1
+            return calls["n"] == 1
+
+        with patch("shadow.chromium_send._controls", side_effect=[
+            {"composer": [800, 660], "text": "", "copies": 0},
+            {"focused": True},
+            {"text": "hello", "send": [1210, 660], "documentStarted": 1},
+        ]):
+            result = deliver(browser, self.storage, thread="101", decision=decision, conversation=conversation,
+                             revision=1, text="hello", authority="autonomous", allow=allow)
+        self.assertEqual(result, {"delivery": "outside_hours", "sends": 0})
+        self.assertEqual(self.storage.outbox_items(), [])
+        self.assertEqual(browser.click.call_count, 1)
 
 
 if __name__ == "__main__":

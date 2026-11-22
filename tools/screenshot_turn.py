@@ -15,11 +15,11 @@ from shadow.gemini_client import gemini_keys
 from shadow.model_openai import openai_api_key
 from shadow.screenshot_loop import (
     TASK_CLOSE, TASK_NAMES, TASK_REEL, TASK_ROW, LiveVision, act, claim_inbox_retry, classify,
-    finish_inbox_turn, gemini_fallback, offer, openai_primary, open_png, run_turn, sample_player,
-    thread_id_of, utcnow,
+    finish_inbox_turn, gemini_fallback, offer, openai_primary, open_png, run_check, run_turn,
+    sample_player, thread_id_of, utcnow, within_hours,
 )
 from shadow.settings import data_dir
-from shadow.storage import open_storage
+from shadow.storage import StorageLocked, open_storage
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -219,6 +219,10 @@ def main(argv=None):
                         help="Process live chat content with the configured models. Use provider projects approved for that data.")
     parser.add_argument("--thread", help="Numeric Instagram thread ID for an owner-selected old or current conversation.")
     parser.add_argument("--send", action="store_true", help="Deliver a verified draft to the specified thread.")
+    parser.add_argument("--deliver", action="store_true",
+                        help="Scheduled inbox check. Reply to eligible unread chats inside India daytime.")
+    parser.add_argument("--allow-thread", action="append", default=[], dest="allow_threads",
+                        help="Qualification only: transcribe and send this numeric thread and no others.")
     parser.add_argument("--send-text", help="Deliver one owner-directed message to the specified thread.")
     parser.add_argument("--resume-login", action="store_true", help="Clear a login pause after verifying a signed-in inbox.")
     parser.add_argument("--show-draft", action="store_true", help="Print the saved draft text locally.")
@@ -234,6 +238,13 @@ def main(argv=None):
         parser.error("--thread requires --live and an exact numeric thread ID.")
     if (args.send or args.send_text is not None) and (not args.thread or args.measure):
         parser.error("Delivery requires --live and --thread.")
+    if args.deliver and (not args.live or not args.allow_live_model or args.thread or args.send
+                         or args.send_text is not None or args.measure):
+        parser.error("--deliver requires --live --allow-live-model and selects the inbox itself.")
+    if args.allow_threads and not args.deliver:
+        parser.error("--allow-thread is only valid with --deliver.")
+    if any(not re.fullmatch(r"[0-9]+", item) for item in args.allow_threads):
+        parser.error("--allow-thread requires an exact numeric thread ID.")
     if args.send and (not args.allow_live_model or args.send_text is not None):
         parser.error("--send uses a model draft and requires --allow-live-model.")
     if args.resume_login and (not args.live or args.allow_live_model or args.thread or args.measure):
@@ -302,6 +313,21 @@ def main(argv=None):
         parser.error("OPENAI_API_KEY (or SHADOW_OPENAI_API_KEY) and GEMINI_API_KEY are required.")
     vision = LiveVision(keys)
     profile = args.profile or (profile_path() if args.live else directory / "profile")
+    if args.deliver:
+        if not within_hours(utcnow()):
+            print(json.dumps({"outcome": "outside_hours", "sends": 0, "reactions": 0}))
+            return
+        try:
+            opened = open_storage(directory)
+        except StorageLocked:
+            print(json.dumps({"outcome": "overlap", "sends": 0, "reactions": 0}))
+            return
+        with opened as storage, chromium(binary, profile) as browser:
+            result = run_check(browser, vision, storage, account_id=args.account, now=utcnow(),
+                               primary=openai_primary(key), fallback=gemini_fallback(keys),
+                               deliver=deliver, allow_threads=args.allow_threads or None)
+        print(json.dumps({key: value for key, value in result.items() if key != "bubbles"}))
+        return
     with open_storage(directory) as storage, chromium(binary, profile) as browser:
         auto = args.live and not args.thread
         state = storage.get_runtime() or {}

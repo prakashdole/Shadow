@@ -1,10 +1,10 @@
 [Unit]
-Description=Run a Shadow draft turn every two minutes after the last turn
+Description=Shadow inbox check every 10 minutes from 06:00 through 23:50 India time
 
 [Timer]
-OnActiveSec=2min
-OnUnitInactiveSec=2min
-AccuracySec=15s
+OnCalendar=*-*-* 06..23:00/10:00 Asia/Kolkata
+AccuracySec=1s
+Persistent=false
 
 [Install]
 WantedBy=timers.target

@@ -1,6 +1,8 @@
-# Screenshot draft runbook
+# Instagram inbox runbook
 
-The viewport is fixed at **1280×720**, device scale **1**. A normal turn ends at a saved draft. Add `--send` to a targeted live model turn to deliver a newly verified draft. Use `--send-text` with a targeted live turn for one owner-directed message.
+The viewport is fixed at **1280×720**, device scale **1**. A manual turn can stop at a saved draft. The scheduled check replies once to an eligible unread chat and confirms the send from a freshly loaded Instagram document.
+
+India daytime is **06:00 through 23:59 Asia/Kolkata**. The timer fires every 10 minutes from **06:00 through 23:50**. Nothing new is opened or sent from **00:00 through 05:59**. A submission that already started can finish its reload check. Missed overnight slots are not replayed.
 
 ## Setup
 
@@ -45,7 +47,9 @@ This browser-only probe reopens the profile, opens existing inbox rows by verifi
 
 To check one old conversation, pass `--thread THREAD_ID` with the numeric ID from its Instagram URL. A redirected thread fails verification. With `--allow-live-model`, a targeted turn sends the verified conversation crop and applicable reel frames to Gemini and sends structured transcript and media context to the reply model. An untargeted turn also uses the inbox screenshot to select a visibly unread row. Gemini API projects used for private messages, including backup keys, need active Cloud Billing. [Gemini API terms](https://ai.google.dev/gemini-api/terms)
 
-Delivery clicks the visible Send control once and confirms the message after reopening the exact conversation. The database records the attempt before clicking. If the message cannot be confirmed, check the thread before resolving the `uncertain` outbox item. The scheduled service prepares drafts.
+Delivery clicks the visible Send control once and confirms the message after reopening the exact conversation. The database records the attempt before the click. An optimistic bubble in the current page is not confirmation. If the message cannot be confirmed, the outbox item stays `uncertain` and is not sent again. The next in-hours check reloads that thread and confirms the item only when the fresh document shows exactly one copy.
+
+The scheduled unit is `shadow-drafts.service`, started by `shadow-drafts.timer`. It runs `tools.screenshot_turn --live --allow-live-model --deliver`. One check handles at most three chats: unfinished opened threads first, then the oldest visibly unread row. Stories, reactions, groups, and contacts that are not `known` or `approved_unknown` are held with no send. A second process exits as `overlap` because the database lock is exclusive.
 
 ## Measured locally
 
@@ -76,9 +80,11 @@ Delivery clicks the visible Send control once and confirms the message after reo
 | HTTP 429 or a daily quota | the turn stays `pending` on the same key |
 | Primary draft transport failure | one Gemini 3.5 Flash-Lite fallback; a model `hold` is kept |
 | New message while drafting or changed thread | the reply is discarded |
+| Same reel turn after playback, aside from whitespace, a dropped reel label, or a Seen line | the draft can still be sent |
 | Owner already answered | the old draft is superseded and the turn holds |
-| Retry after opening an unread row | its exact thread ID survives restart for up to three attempts total |
-| Restart on the same revision | the existing draft is reused |
+| Retry after opening an unread row | the thread stays queued even if the unread badge is gone, for up to three attempts |
+| Restart during `attempting` | the item becomes `uncertain` and is reconciled, not resent |
+| Outside 06:00–23:59 Asia/Kolkata | `outside_hours`, no inbox open and no send |
 
 After signing in again, run a browser-only check with `--live --resume-login` to clear a login pause for this account and data directory. Stop the timer to pause scheduled screenshot turns.
 
@@ -102,7 +108,44 @@ The synthetic browser test runs a plain chat and a shared reel through Chromium,
 2. On `shadow-host`, enter that release and run `uv sync --locked --extra browser`, then run the checks above. Allow at least 2 GiB for Chrome. Use the non-root SSH account.
 3. Run `uv run --locked --extra browser python -m tools.chromium_viewer` in the release over SSH. It prints a private loopback URL. Open a second SSH session from the Mac with `ssh -N -L 127.0.0.1:REMOTE_PORT:127.0.0.1:REMOTE_PORT shadow-host`. Use the printed port for both ends, then open the original URL on the Mac. Sign in directly in the viewer, then choose **Save session and close viewer**. The Linux profile remains under `~/.local/share/shadow/chromium-instagram`. Use the read-only `--live` probe to verify the session after a browser restart.
 4. Put only approved provider keys and the chosen `SHADOW_ACCOUNT_ID` in `~/.config/shadow/screenshot.env` with mode `0600`. For the manual smoke test, export those variables into the test shell without echoing them. Use `--data-dir "$HOME/.local/share/shadow/screenshot-drafts" --live --allow-live-model --thread THREAD_ID` for an approved existing plain chat and an approved shared reel chat. Verify both produce the expected draft or a correct hold if the owner already answered. Check the result has zero sends and reactions.
-5. After the tests pass, point `~/.local/share/shadow-release` at the qualified release and install both files from `deploy/` into `~/.config/systemd/user/`. Run `systemctl --user daemon-reload` and start `shadow-drafts.service` once. Inspect `journalctl --user -u shadow-drafts.service` for the result.
-6. To run after logout or reboot, enable linger for the SSH user with `loginctl enable-linger "$USER"` and start `shadow-drafts.timer` with `systemctl --user enable --now shadow-drafts.timer`. The timer runs one turn two minutes after the last one exits, without overlap. Disable it with `systemctl --user disable --now shadow-drafts.timer`. Then run `systemctl --user stop shadow-drafts.service` before changing the profile or release link.
+5. Point `~/.local/share/shadow-release` at the qualified release and install both files from `deploy/` into `~/.config/systemd/user/`. Run `systemctl --user daemon-reload`. Do not enable the timer until you want live sends.
+6. Linger lets the user service manager survive logout and reboot: `sudo loginctl enable-linger "$USER"`. The production timer stays disabled until you turn it on.
 
-SQLite and the browser profile live outside the release directory. The service uses a private umask and writes only results and identifiers to its journal. Omit `--show-draft` from scheduled work. Draft content stays in SQLite for review.
+## Operate
+
+Turn the schedule on:
+
+```sh
+systemctl --user enable --now shadow-drafts.timer
+```
+
+Stop it:
+
+```sh
+systemctl --user disable --now shadow-drafts.timer
+systemctl --user stop shadow-drafts.service
+```
+
+The next check, without starting anything:
+
+```sh
+systemctl --user list-timers shadow-drafts.timer
+systemd-analyze calendar --iterations=3 '*-*-* 06..23:00/10:00 Asia/Kolkata'
+```
+
+Logs, identifiers and outcomes only:
+
+```sh
+journalctl --user -u shadow-drafts.service -n 80 --no-pager
+```
+
+Uncertain send: do not click Send again and do not delete the row. The next in-hours check reloads the thread. Confirm it only from that fresh document. See the state without the message text:
+
+```sh
+sqlite3 "$HOME/.local/share/shadow/screenshot-drafts/shadow.sqlite3" \
+  "SELECT id, conversation_id, state FROM outbox WHERE state != 'confirmed';"
+```
+
+Stop the timer before changing the profile or the release link. Qualification runs use `--allow-thread THREAD_ID` so other open chats are not transcribed or sent. The installed service does not pass `--allow-thread`.
+
+SQLite and the browser profile live outside the release directory. The service uses a private umask and writes only results and identifiers to its journal. Omit `--show-draft` from scheduled work. Draft content stays in SQLite.

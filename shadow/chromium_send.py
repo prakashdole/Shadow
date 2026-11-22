@@ -37,10 +37,12 @@ def _controls(browser, text):
         })(""" + json.dumps(text) + ")")["result"].get("value") or {}
 
 
-def deliver(browser, storage, *, thread, decision, conversation, revision, text, authority):
+def deliver(browser, storage, *, thread, decision, conversation, revision, text, authority, allow=None):
     """Click once, and confirm only after reloading Instagram from the server."""
     if not text or len(text) > 180 or not text.isprintable() or text.strip() != text:
         return {"delivery": "invalid_text", "sends": 0}
+    if allow is not None and not allow():
+        return {"delivery": "outside_hours", "sends": 0}
     items = storage.outbox_items(conversation)
     if any(item["state"] in {"attempting", "uncertain"} or item["decision_id"] == decision
            for item in items):
@@ -62,6 +64,9 @@ def deliver(browser, storage, *, thread, decision, conversation, revision, text,
     ready = current()
     if ready.get("text") != text or not ready.get("send"):
         return {"delivery": "send_control_unverified", "sends": 0}
+    if allow is not None and not allow():
+        _clear_composer(browser)
+        return {"delivery": "outside_hours", "sends": 0}
     item = storage.add_outbox_item(decision_id=decision, item_index=0, conversation_id=conversation,
                                    text=text, authority=authority, revision=revision)
     storage.transition(item, "attempting")
@@ -89,3 +94,45 @@ def deliver(browser, storage, *, thread, decision, conversation, revision, text,
         pass
     storage.transition(item, "uncertain")
     return {"delivery": "uncertain", "sends": 0}
+
+
+def _clear_composer(browser):
+    browser.command("Runtime.evaluate", expression="""
+        [...document.querySelectorAll('[contenteditable="true"]')].forEach(el => {
+          const r = el.getBoundingClientRect();
+          if (r.x > 370 && r.y > 480) el.textContent = '';
+        })
+    """)
+
+
+def reconcile(browser, storage, item, thread):
+    """Confirm one uncertain attempt from a freshly loaded document, or leave it held."""
+    if item["state"] != "uncertain":
+        return "not_uncertain"
+    url = f"https://www.instagram.com/direct/t/{thread}/"
+    browser.navigate(url)
+    deadline = monotonic() + 12
+    started = None
+    while monotonic() < deadline and started is None:
+        if browser.page_url().split("?", 1)[0].rstrip("/") == url.rstrip("/"):
+            started = _controls(browser, item["text"]).get("documentStarted")
+        if started is None:
+            sleep(0.25)
+    if started is None:
+        return "held"
+    browser.command("Page.reload", ignoreCache=True)
+    deadline = monotonic() + 12
+    while monotonic() < deadline:
+        if browser.page_url().split("?", 1)[0].rstrip("/") != url.rstrip("/"):
+            sleep(0.25)
+            continue
+        state = _controls(browser, item["text"])
+        origin = state.get("documentStarted")
+        if origin is None or origin == started:
+            sleep(0.25)
+            continue
+        if state.get("copies") == 1 and state.get("text") == "":
+            storage.confirm_send(item["id"], {"text": item["text"], "evidence": {"reloaded_thread": True}})
+            return "confirmed"
+        return "held"
+    return "held"
