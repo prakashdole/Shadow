@@ -122,6 +122,25 @@ class MappingTests(unittest.TestCase):
 
 
 class ScreenTests(unittest.TestCase):
+    def test_unread_inbox_label_includes_dot_beyond_the_text_band(self):
+        inbox = paint(["Read chat", "Unread chat"])
+        draw = ImageDraw.Draw(inbox)
+        draw.line((471, 56, 471, 700), fill="#dbdfe4")
+        draw.ellipse((439, 200, 446, 207), fill="#4a5df9")
+
+        def choose(_image, _task, choices, candidates):
+            rows = [key for key in choices if key.startswith("row-")]
+            self.assertEqual(rows, ["row-2"])
+            self.assertIn("unread dot", choices["row-2"])
+            self.assertGreater(candidates[0].box[2], 446)
+            return "hold", 0.95
+
+        vision = Vision()
+        vision.choose = choose
+        browser = Shots([inbox], url="https://www.instagram.com/direct/inbox/")
+        result = act(browser, vision, task=TASK_ROW, names=False, prefer_unread=True)
+        self.assertEqual(result["reason"], "hold")
+
     def test_duplicate_names_do_not_click(self):
         image = paint(["Sam Account", "Sam Account"])
         self.assertEqual(classify(image, "http://127.0.0.1/"), "inbox")

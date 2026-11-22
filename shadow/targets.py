@@ -7,7 +7,7 @@ markers, DOM selectors and model-invented coordinates are not inputs.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from urllib.parse import urlsplit
 
 from PIL import Image
@@ -123,6 +123,40 @@ def _list_rows(image: Image.Image, box):
     return tall or _contrast_rows(image, box, min_height=16, max_height=70)
 
 
+def _inbox_divider(image):
+    gray = image.convert("L").load()
+    sample = range(290, min(700, image.height), 12)
+    for x in range(360, min(620, image.width - 1)):
+        contrast = sum(abs(gray[x, y] - gray[x - 1, y]) >= 16
+                       and abs(gray[x, y] - gray[x + 1, y]) >= 16 for y in sample)
+        if contrast >= len(sample) * 0.85:
+            return x
+    return None
+
+
+def _unread_rows(image, rows):
+    edge = _inbox_divider(image)
+    if edge is None:
+        return rows
+    pixels = image.load()
+    expanded, marked = [], []
+    for row in rows:
+        left, top, right, bottom = row.box
+        row = replace(row, box=(left, top, max(right, edge - 1), bottom))
+        expanded.append(row)
+        _, center = row.center
+        # Instagram's small indigo badge sits near the divider, beyond the preview text.
+        blue = [(x, y) for y in range(max(top, center - 9), min(bottom, center + 10))
+                for x in range(edge - 44, edge - 13)
+                for r, g, b in (pixels[x, y],) if r <= 140 and g <= 170 and b - g >= 75]
+        if not 24 <= len(blue) <= 72:
+            continue
+        xs, ys = zip(*blue)
+        if 5 <= max(xs) - min(xs) <= 8 and 5 <= max(ys) - min(ys) <= 8:
+            marked.append(replace(row, description=f"{row.description} A visible unread dot marks this row."))
+    return marked or expanded
+
+
 def _media_blocks(image: Image.Image, box):
     """Portrait or square cards. Taller than a text bubble, so the default band limit drops them."""
     found = _contrast_rows(image, box, min_height=80, max_height=520, min_width=70)
@@ -209,7 +243,7 @@ def _player_close(image: Image.Image):
     return []
 
 
-def offer(image: Image.Image, screen: str, *, url: str = "") -> list[Candidate]:
+def offer(image: Image.Image, screen: str, *, url: str = "", prefer_unread=False) -> list[Candidate]:
     """Actions that are legal on this screen. Empty when a click would be a guess."""
     if screen in ("blank", "header_only", "login", "unknown"):
         return []
@@ -227,9 +261,10 @@ def offer(image: Image.Image, screen: str, *, url: str = "") -> list[Candidate]:
                                       "Bright mark in the top-right of the player.", "thread"))
         return controls
     if screen == "inbox":
-        return [Candidate(f"row-{index}", "row", box,
+        rows = [Candidate(f"row-{index}", "row", box,
                           f"Inbox row {index}, counted from the top.", "thread")
                 for index, box in enumerate(_list_rows(image, inbox), start=1)]
+        return _unread_rows(image, rows) if prefer_unread else rows
     if screen == "thread":
         cards = [Candidate(f"card-{index}", "card", box,
                            f"Thread card or control {index}, counted from the top.", "overlay")

@@ -38,6 +38,7 @@ _RECEIPTS = {"seen", "delivered", "sent"}
 TASK_ROW = ("Select the oldest visibly unread DM among the offered rows. Look for the unread dot "
             "or clear unread styling on that row. A recent preview alone does not establish unread "
             "status. Use the visible order or age to choose among confirmed unread rows. "
+            "If confirmed unread rows are the same age, choose the lower row. "
             "Skip stories and reaction-only rows. If none qualifies, hold.")
 TASK_NAMES = ("Compare the visible display names on the inbox DM rows. Choose duplicate if two "
               "rows show the same display name, unique if every name is readable and distinct, "
@@ -511,7 +512,8 @@ def _choices(candidates):
     return choices
 
 
-def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None, names=True, skip_keys=()):
+def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None, names=True, skip_keys=(),
+        prefer_unread=False):
     """One verified click, scroll, wait, or hold. Never clicks a stale box."""
     pause = time.sleep if sleep is None else sleep
     try:
@@ -527,7 +529,7 @@ def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None, na
         return _done(outcome="login", reason="login_required", screen=screen)
     if screen in ("blank", "header_only", "unknown"):
         return _done(outcome="wait", reason=screen, screen=screen, recapture=True)
-    found = offer(image, screen, url=url)
+    found = offer(image, screen, url=url, prefer_unread=prefer_unread)
     if task == TASK_ROW:
         found = [candidate for candidate in found if candidate.kind == "row" and candidate.key not in skip_keys]
     elif task == TASK_REEL:
@@ -569,9 +571,10 @@ def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None, na
         return _done(outcome="hold", reason="bad_capture", recapture=True)
     if classify(fresh, browser.page_url()) != screen:
         return _done(outcome="hold", reason="unexpected_screen", recapture=True)
-    again = offer(fresh, screen, url=url)
+    again = offer(fresh, screen, url=url, prefer_unread=prefer_unread)
     match = next((candidate for candidate in again if candidate.key == target.key), None)
-    moved = match is None or abs(match.center[0] - target.center[0]) > 4 or abs(match.center[1] - target.center[1]) > 4
+    moved = (match is None or match.description != target.description
+             or abs(match.center[0] - target.center[0]) > 4 or abs(match.center[1] - target.center[1]) > 4)
     stable_box = HEADER if target.kind == "scroll" else target.box
     if moved or not region_stable(image, fresh, stable_box):
         return _done(outcome="hold", reason="target_moved", recapture=True)
@@ -717,7 +720,8 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
         return _done(outcome="hold", reason="wrong_thread", recapture=True)
     if screen == "inbox":
         # Scheduled delivery follows an unread row and binds to the thread URL after the click.
-        opened = act(browser, vision, task=TASK_ROW, sleep=sleep, names=deliver is None, skip_keys=skip_keys)
+        opened = act(browser, vision, task=TASK_ROW, sleep=sleep, names=deliver is None,
+                     skip_keys=skip_keys, prefer_unread=deliver is not None)
         thread = thread_id_of(browser.page_url())
         if track_inbox and thread:
             ensure_schema(storage)
