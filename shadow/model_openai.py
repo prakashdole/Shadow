@@ -48,7 +48,7 @@ def _failure(result, http_status=None):
 
 
 class OpenAITransport:
-    def __init__(self, *, base_url, api_key, models, max_tokens=1024, context_chars=32000):
+    def __init__(self, *, base_url, api_key, models, max_tokens=1024, context_chars=32000, json_object=False):
         url = urlsplit(base_url)
         if (url.scheme != "https" or not url.hostname or url.username or url.password
                 or url.query or url.fragment):
@@ -64,6 +64,7 @@ class OpenAITransport:
             raise ValueError("Invalid provider input budget")
         self.base_url, self._key = base_url.rstrip("/"), api_key
         self.models, self.max_tokens, self.context_chars = dict(models), max_tokens, context_chars
+        self._json_object = json_object
         self._opener = build_opener(_NoRedirect())
 
     def configuration(self, role):
@@ -76,6 +77,8 @@ class OpenAITransport:
         body = {"model": self.models[role], "messages": [
             {"role": "system", "content": system}, {"role": "user", "content": input_text}],
             "max_tokens": self.max_tokens, "stream": False}
+        if self._json_object:
+            body["response_format"] = {"type": "json_object"}
         if urlsplit(self.base_url).hostname == "api.minimax.io":
             body["reasoning_split"] = True
         request = Request(self.base_url + "/chat/completions",

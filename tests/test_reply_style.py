@@ -2,7 +2,6 @@
 
 import json
 from tempfile import TemporaryDirectory
-from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -19,10 +18,20 @@ class ReplyStyleTests(TestCase):
         self.assertIn("Return one JSON object and nothing else", system)
         conversation = '{"bubbles":[{"text":"A new example for this turn"}]}'
 
-        with patch("shadow.model_openai.OpenAITransport.generate", autospec=True) as generate:
-            generate.return_value = SimpleNamespace(text="{}", usage={}, model="gpt-4o-mini")
+        openai_response = MagicMock()
+        openai_response.read.return_value = json.dumps({
+            "model": "gpt-4o-mini",
+            "choices": [{"message": {"role": "assistant", "content": "{}"}, "finish_reason": "stop"}],
+        }).encode()
+        with patch("shadow.model_openai.build_opener") as openai_opener:
+            opener = openai_opener.return_value
+            opener.open.return_value.__enter__.return_value = openai_response
             openai_primary("fixture-key")(system, conversation)
-            self.assertEqual(generate.await_args.args[1:], ("reply", system, conversation))
+            openai_payload = json.loads(opener.open.call_args.args[0].data)
+        self.assertEqual(openai_payload["messages"], [
+            {"role": "system", "content": system}, {"role": "user", "content": conversation},
+        ])
+        self.assertEqual(openai_payload["response_format"], {"type": "json_object"})
 
         response = MagicMock()
         response.status = 200

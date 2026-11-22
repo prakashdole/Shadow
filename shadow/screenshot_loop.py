@@ -224,6 +224,9 @@ def reply_system(storage=None, conversation_id=None):
              '{"schema_version":1,"action":"reply","reason_code":"ok","messages":["one short dm"],'
              '"evidence_event_ids":[],"used_memory_ids":[]}. '
              "If essential evidence is missing, use action skip and messages []. "
+             "When the contact asks for spoken words, a quote from audio, or other audio details "
+             "that the supplied evidence does not establish, return action skip with messages []. "
+             "Keep the reason in reason_code. A skip never contains a chat message. "
              "action hold means the same as skip. Do not invent prices, times, names or speech.")
     return "\n\n".join((voice_text(), *extra, rules))
 
@@ -939,7 +942,7 @@ def openai_primary(api_key):
         transport = OpenAITransport(
             base_url="https://api.openai.com/v1", api_key=api_key,
             models={"risk": "gpt-4o-mini", "reply": "gpt-4o-mini", "extraction": "gpt-4o-mini"},
-            max_tokens=200)
+            max_tokens=200, json_object=True)
         try:
             result = asyncio.run(transport.generate("reply", system, user))
         except ProviderError as exc:
