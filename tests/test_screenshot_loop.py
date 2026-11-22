@@ -536,13 +536,15 @@ class PolicyTests(unittest.TestCase):
                                         record_json="{}", versions_json="{}")
         with patch("shadow.chromium_send._controls", side_effect=[
             {"composer": [800, 660], "text": "", "copies": 0}, {"focused": True},
-            {"text": "hello", "send": [1210, 660]}, {"copies": 1}, {"copies": 1, "text": ""},
+            {"text": "hello", "send": [1210, 660], "documentStarted": 1}, {"copies": 1},
+            {"copies": 1, "text": "", "documentStarted": 1},
+            {"copies": 1, "text": "", "documentStarted": 2},
         ]):
             args = dict(thread="101", decision=decision, conversation=conversation, revision=0,
                         text="hello", authority="owner_command")
             self.assertEqual(deliver(browser, storage, **args), {"delivery": "confirmed", "sends": 1})
             self.assertEqual(deliver(browser, storage, **args), {"delivery": "prior_attempt", "sends": 0})
-        browser.navigate.assert_called_once_with(thread_url)
+        browser.command.assert_any_call("Page.reload", ignoreCache=True)
         self.assertEqual(browser.click.call_count, 2)
         self.assertEqual(storage.outbox_items(conversation)[0]["state"], "confirmed")
 

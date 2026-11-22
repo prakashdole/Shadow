@@ -32,7 +32,8 @@ def _controls(browser, text):
           return {composer: composer ? center(composer) : null,
                   text: composer ? composer.innerText.trim() : null,
                   focused: composer === document.activeElement,
-                  send: buttons.length === 1 ? center(buttons[0]) : null, copies};
+                  send: buttons.length === 1 ? center(buttons[0]) : null, copies,
+                  documentStarted: performance.timeOrigin};
         })(""" + json.dumps(text) + ")")["result"].get("value") or {}
 
 
@@ -70,7 +71,7 @@ def deliver(browser, storage, *, thread, decision, conversation, revision, text,
         deadline = monotonic() + 10
         while monotonic() < deadline:
             if current().get("copies") == 1:
-                browser.navigate(url)
+                browser.command("Page.reload", ignoreCache=True)
                 break
             sleep(0.25)
         else:
@@ -78,7 +79,9 @@ def deliver(browser, storage, *, thread, decision, conversation, revision, text,
         deadline = monotonic() + 12
         while monotonic() < deadline:
             state = current()
-            if state.get("copies") == 1 and state.get("text") == "":
+            if (state.get("copies") == 1 and state.get("text") == ""
+                    and state.get("documentStarted") is not None
+                    and state["documentStarted"] != ready["documentStarted"]):
                 storage.confirm_send(item, {"text": text, "evidence": {"reloaded_thread": True}})
                 return {"delivery": "confirmed", "sends": 1}
             sleep(0.25)
