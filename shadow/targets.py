@@ -137,12 +137,20 @@ def _blank(image: Image.Image) -> bool:
     return variance < 40
 
 
+def _player_route(path: str) -> bool:
+    parts = path.strip("/").split("/")
+    return len(parts) == 2 and parts[0] in ("p", "reel", "reels", "tv")
+
+
 def classify(image: Image.Image, url: str = "") -> str:
     """Screen class from this image. A thread URL with too little text is still loading."""
     if any(part in url for part in ("/accounts/login", "/challenge/", "checkpoint_required")):
         return "login"
     if _blank(image):
         return "blank"
+    path = urlsplit(url).path
+    if _player_route(path):
+        return "overlay"
     if _split(image) is None and _dark_center(image):
         return "overlay"
     inbox, thread = _panels(image)
@@ -150,7 +158,7 @@ def classify(image: Image.Image, url: str = "") -> str:
     rows = _list_rows(image, inbox)
     if len(rows) < 2 and _dark_center(image) and _contrast_rows(image, OVERLAY, max_height=70):
         return "overlay"
-    if urlsplit(url).path.rstrip("/") == "/direct/inbox":
+    if path.rstrip("/") == "/direct/inbox":
         return "inbox" if rows else "header_only"
     thread_bands = _contrast_rows(image, thread)
     if len(thread_bands) >= 3 or _media_blocks(image, thread):
@@ -187,10 +195,26 @@ def _top_right_close(image: Image.Image):
     return (max(0, x - 10), 46, min(gray.width, x + 10), 74)
 
 
-def offer(image: Image.Image, screen: str) -> list[Candidate]:
+def _player_close(image: Image.Image):
+    """Check both strokes of the close mark at the fixed Instagram viewport."""
+    gray = image.crop((1229, 18, 1247, 36)).convert("L")
+    offsets = (-6, -4, 4, 6)
+    background = sum(gray.getpixel(point) for offset in offsets
+                     for point in ((9 + offset, 9), (9, 9 + offset))) / 8
+    down = sum(gray.getpixel((9 + offset, 9 + offset)) for offset in offsets) / 4 - background
+    up = sum(gray.getpixel((9 + offset, 9 - offset)) for offset in offsets) / 4 - background
+    if min(down, up) >= 32 or max(down, up) <= -32:
+        return [Candidate("close-corner", "close", (1229, 18, 1247, 36),
+                          "Close mark in the top-right of the player.", "thread")]
+    return []
+
+
+def offer(image: Image.Image, screen: str, *, url: str = "") -> list[Candidate]:
     """Actions that are legal on this screen. Empty when a click would be a guess."""
     if screen in ("blank", "header_only", "login", "unknown"):
         return []
+    if screen == "overlay" and _player_route(urlsplit(url).path):
+        return _player_close(image)
     inbox, thread = _panels(image)
     if screen == "overlay":
         bands = _contrast_rows(image, OVERLAY, max_height=70)

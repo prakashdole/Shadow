@@ -173,6 +173,33 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(screen, "inbox")
         self.assertEqual([candidate.key for candidate in offer(image, screen)], ["row-1", "row-2"])
 
+    def test_shared_post_player_uses_overlay_controls(self):
+        image = paint(["Old chat", "Shared video"])
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((715, 120, 1060, 560), fill="#182134")
+        url = "https://www.instagram.com/p/example/"
+        self.assertEqual(classify(image, url), "overlay")
+        self.assertEqual(classify(Image.new("RGB", image.size, "white"), url), "blank")
+        browser = Shots([image], url=url)
+        self.assertEqual(act(browser, Vision(), task=TASK_CLOSE)["reason"], "no_target")
+        self.assertEqual(browser.clicks, [])
+
+        draw.line((1232, 21, 1244, 33), fill="white", width=3)
+        draw.line((1232, 33, 1244, 21), fill="white", width=3)
+        thread = paint(["Old chat", "Shared video"])
+        for top in (230, 295, 360):
+            ImageDraw.Draw(thread).rectangle((715, top, 955, top + 30), fill="#182134")
+
+        class PostPlayer(Shots):
+            def click(self, x, y):
+                super().click(x, y)
+                self.url = "https://www.instagram.com/direct/t/101/"
+
+        browser = PostPlayer([image, image, thread], url=url)
+        result = act(browser, Vision(choice="close-corner"), task=TASK_CLOSE)
+        self.assertEqual(result["outcome"], "acted")
+        self.assertEqual(browser.clicks, [(1238, 27)])
+
     def test_a_large_media_block_is_a_loaded_thread(self):
         image = Image.new("RGB", (1280, 720), "#121212")
         draw = ImageDraw.Draw(image)

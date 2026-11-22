@@ -395,7 +395,7 @@ def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None, na
         return _done(outcome="login", reason="login_required", screen=screen)
     if screen in ("blank", "header_only", "unknown"):
         return _done(outcome="wait", reason=screen, screen=screen, recapture=True)
-    found = offer(image, screen)
+    found = offer(image, screen, url=url)
     if task == TASK_ROW:
         found = [candidate for candidate in found if candidate.kind == "row"]
     elif task == TASK_REEL:
@@ -437,7 +437,7 @@ def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None, na
         return _done(outcome="hold", reason="bad_capture", recapture=True)
     if classify(fresh, browser.page_url()) != screen:
         return _done(outcome="hold", reason="unexpected_screen", recapture=True)
-    again = offer(fresh, screen)
+    again = offer(fresh, screen, url=url)
     match = next((candidate for candidate in again if candidate.key == target.key), None)
     moved = match is None or abs(match.center[0] - target.center[0]) > 4 or abs(match.center[1] - target.center[1]) > 4
     stable_box = HEADER if target.kind == "scroll" else target.box

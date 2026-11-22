@@ -14,7 +14,11 @@
   .owner {margin-left: auto; background: #315f9c;}
   #card {width: 204px; height: 212px; color: white; background: #642d46; text-align: left;}
   #player {position: fixed; inset: 0; background: #111827; color: white;}
-  #close {position: absolute; top: 50px; right: 60px; color: #111827; background: white; padding: 10px;}
+  #close {position: absolute; top: 18px; right: 33px; width: 18px; height: 18px;
+          color: white; background: transparent; padding: 0;}
+  #close::before, #close::after {content: ''; position: absolute; inset: 8px 0;
+                                background: currentColor; transform: rotate(45deg);}
+  #close::after {transform: rotate(-45deg);}
   #frame {width: 380px; height: 310px; margin: 160px auto 0; padding: 40px;
           background: #844522; font-size: 32px; text-align: center;}
 </style>
@@ -25,7 +29,7 @@
 </nav>
 <article id="thread"></article>
 <section id="player" hidden>
-  <button id="close" onclick="closeReel()">Close reel</button>
+  <button id="close" aria-label="Close reel" onclick="closeReel()"></button>
   <div id="frame">Paper kite on a windy hill</div>
 </section>
 <script>
