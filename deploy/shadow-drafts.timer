@@ -4,7 +4,7 @@ Description=Shadow inbox check every 10 minutes from 06:00 through 23:50 India t
 [Timer]
 OnCalendar=*-*-* 06..23:00/10:00 Asia/Kolkata
 AccuracySec=1s
-Persistent=false
+Persistent=true
 
 [Install]
 WantedBy=timers.target

@@ -716,7 +716,8 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
     if expected_thread_id and thread_id_of(browser.page_url()) != expected_thread_id:
         return _done(outcome="hold", reason="wrong_thread", recapture=True)
     if screen == "inbox":
-        opened = act(browser, vision, task=TASK_ROW, sleep=sleep, skip_keys=skip_keys)
+        # Scheduled delivery follows an unread row and binds to the thread URL after the click.
+        opened = act(browser, vision, task=TASK_ROW, sleep=sleep, names=deliver is None, skip_keys=skip_keys)
         thread = thread_id_of(browser.page_url())
         if track_inbox and thread:
             ensure_schema(storage)
@@ -853,7 +854,7 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
 
 def run_check(browser, vision, storage, *, account_id, now, primary, fallback, deliver,
               allow_threads=None, sleep=None, clock=None):
-    """One scheduled inbox check. Unfinished chats are carried. Missed slots are not replayed."""
+    """One scheduled inbox check, carrying forward unfinished chats."""
     clock = clock or (lambda: now)
     if not within_hours(clock()):
         return _done(outcome="outside_hours", reason="outside_hours", sends=0, results=[])
@@ -905,7 +906,7 @@ def run_check(browser, vision, storage, *, account_id, now, primary, fallback, d
         if result["outcome"] == "paused" and not result.get("thread_id"):
             break
         if not queued and result["outcome"] in ("hold", "wait") and result.get("reason") in (
-                "hold", "no_target", "ambiguous_duplicate", "low_confidence"):
+                "hold", "no_target", "low_confidence"):
             break
     return _done(outcome="check", reason="done", sends=sends, results=results, recovered=recovered)
 

@@ -2,7 +2,7 @@
 
 The viewport is fixed at **1280×720**, device scale **1**. A manual turn can stop at a saved draft. The scheduled check replies once to an eligible unread chat and confirms the send from a freshly loaded Instagram document.
 
-India daytime is **06:00 through 23:59 Asia/Kolkata**. The timer fires every 10 minutes from **06:00 through 23:50**. Nothing new is opened or sent from **00:00 through 05:59**. A submission that already started can finish its reload check. Missed overnight slots are not replayed.
+India daytime is **06:00 through 23:59 Asia/Kolkata**. The timer fires every 10 minutes from **06:00 through 23:50** and triggers one catch-up check after downtime if it missed a slot. The worker opens the inbox and sends only between **06:00 and midnight**. A submission that already started can finish its reload check.
 
 ## Setup
 

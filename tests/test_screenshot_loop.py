@@ -733,7 +733,7 @@ class HoursTests(unittest.TestCase):
         timer = (root / "deploy/shadow-drafts.timer").read_text()
         service = (root / "deploy/shadow-drafts.service").read_text()
         self.assertIn("*-*-* 06..23:00/10:00 Asia/Kolkata", timer)
-        self.assertIn("Persistent=false", timer)
+        self.assertIn("Persistent=true", timer)
         self.assertNotIn("OnUnitInactiveSec", timer)
         self.assertIn("--deliver", service)
 
@@ -875,6 +875,39 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual([step["reason"] for step in result["results"]], ["hold"])
         self.assertEqual(result["results"][0]["screen"], "inbox")
         self.assertEqual(browser.clicks, [])
+
+    def test_scheduled_check_selects_an_unread_row_with_duplicate_display_names(self):
+        inbox = paint(["Sam Account", "Sam Account"])
+        thread = paint(["First message in the open conversation", "Second message in the open conversation",
+                        "Third message in the open conversation"], column="thread")
+        inbox_url = "https://www.instagram.com/direct/inbox/"
+        thread_url = "https://www.instagram.com/direct/t/101/"
+
+        class Inbox(Shots):
+            def navigate(self, url):
+                self.url = url
+
+            def screenshot(self):
+                return png_bytes(thread if self.url == thread_url else inbox)
+
+            def click(self, x, y):
+                super().click(x, y)
+                self.url = thread_url
+
+        browser = Inbox([inbox], url=inbox_url)
+        vision = Vision(names="duplicate")
+        sent = []
+
+        def send(_browser, _storage, **kwargs):
+            sent.append(kwargs["thread"])
+            return {"delivery": "confirmed", "sends": 1}
+
+        result = run_check(browser, vision, self.storage, account_id="acct", now=self.day,
+                           primary=lambda *_: (reply(), {}), fallback=None, deliver=send)
+
+        self.assertEqual(result["sends"], 1, result)
+        self.assertEqual(sent, ["101"])
+        self.assertNotIn(TASK_NAMES, vision.calls)
 
     def test_queue_survives_a_cleared_badge(self):
         note_opened(self.storage, "acct", "101")
