@@ -8,6 +8,7 @@ markers, DOM selectors and model-invented coordinates are not inputs.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from PIL import Image
 
@@ -149,6 +150,8 @@ def classify(image: Image.Image, url: str = "") -> str:
     rows = _list_rows(image, inbox)
     if len(rows) < 2 and _dark_center(image) and _contrast_rows(image, OVERLAY, max_height=70):
         return "overlay"
+    if urlsplit(url).path.rstrip("/") == "/direct/inbox":
+        return "inbox" if rows else "header_only"
     thread_bands = _contrast_rows(image, thread)
     if len(thread_bands) >= 3 or _media_blocks(image, thread):
         return "thread"

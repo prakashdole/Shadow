@@ -164,6 +164,15 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(classify(image), "inbox")
         self.assertEqual(len(offer(image, "inbox")), 2)
 
+    def test_inbox_with_welcome_panel_still_offers_rows(self):
+        image = paint(["Old chat", "Shared reel"])
+        draw = ImageDraw.Draw(image)
+        for top in (230, 295, 360):
+            draw.rectangle((715, top, 955, top + 30), fill="#182134")
+        screen = classify(image, "https://www.instagram.com/direct/inbox/?entry=direct")
+        self.assertEqual(screen, "inbox")
+        self.assertEqual([candidate.key for candidate in offer(image, screen)], ["row-1", "row-2"])
+
     def test_a_large_media_block_is_a_loaded_thread(self):
         image = Image.new("RGB", (1280, 720), "#121212")
         draw = ImageDraw.Draw(image)
