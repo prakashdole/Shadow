@@ -5,6 +5,8 @@ import json
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from shadow.vision_prompts import DECISION_ROLE
+
 
 class DecisionError(RuntimeError):
     """The screenshot cannot be used for a browser action."""
@@ -24,7 +26,8 @@ def choose_action(api_key: str, image: bytes, task: str, choices: dict[str, str]
         "model": "gemini-decision-1",
         "input": [{"type": "image", "mime_type": "image/png",
                    "data": base64.b64encode(image).decode("ascii")}],
-        "questions": {"action": {"type": "choice", "instructions": task, "criteria": choices}},
+        "questions": {"action": {"type": "choice", "instructions": DECISION_ROLE + "\nTask: " + task,
+                                 "criteria": choices}},
     }
     request = Request(
         "https://generativelanguage.googleapis.com/v1beta/decisions",
