@@ -47,11 +47,13 @@ def _class_of(status, body):
     return "provider"
 
 
-def _post(model, parts, key, thinking, timeout):
+def _post(model, parts, key, thinking, timeout, system=None):
     config = {"temperature": 0, "responseMimeType": "application/json"}
     if thinking:
         config["thinkingConfig"] = {"thinkingLevel": thinking}
     payload = {"contents": [{"role": "user", "parts": parts}], "generationConfig": config}
+    if system:
+        payload["systemInstruction"] = {"parts": [{"text": system}]}
     request = Request(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         data=json.dumps(payload).encode(),
@@ -81,7 +83,7 @@ def _post(model, parts, key, thinking, timeout):
     return status, body
 
 
-def generate(*, model, parts, thinking=None, timeout=60, keys=None, call=None, sleep=None, attempts=3):
+def generate(*, model, parts, system=None, thinking=None, timeout=60, keys=None, call=None, sleep=None, attempts=3):
     """Call Gemini. `call(key) -> (status, body)` replaces HTTP in tests."""
     import time
     keys = gemini_keys() if keys is None else list(keys)
@@ -92,7 +94,7 @@ def generate(*, model, parts, thinking=None, timeout=60, keys=None, call=None, s
     for index, key in enumerate(keys):
         for attempt in range(attempts):
             try:
-                status, body = (call(key) if call else _post(model, parts, key, thinking, timeout))
+                status, body = (call(key) if call else _post(model, parts, key, thinking, timeout, system))
             except ProviderFailure as exc:
                 last = exc
                 if exc.code == "quota":

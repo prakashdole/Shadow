@@ -27,6 +27,9 @@ shadow = "shadow.main:cli"
 where = ["."]
 include = ["shadow*"]
 
+[tool.setuptools.package-data]
+shadow = ["reply_style.md"]
+
 [build-system]
 requires = ["setuptools>=72.0"]
 build-backend = "setuptools.build_meta"
