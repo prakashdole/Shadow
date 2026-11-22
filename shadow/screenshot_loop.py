@@ -171,21 +171,23 @@ def turn_change(before, after):
     if not after:
         return "unreadable"
     before_v, after_v = _visible(before), _visible(after)
-    inbound = [bubble for bubble in after_v if bubble["side"] == "left"]
-    if not inbound or inbound[-1]["unreadable"] or inbound[-1]["clipped"]:
-        return "unreadable"
-    previous = [bubble for bubble in before_v if bubble["side"] == "left"]
-    if _REACTION.search(inbound[-1]["text"] or "") and (
-            not previous or previous[-1]["text"] != inbound[-1]["text"]):
-        return "reaction"
     before_in = tuple(bubble["text"] for bubble in before_v if bubble["side"] == "left")
     after_in = tuple(bubble["text"] for bubble in after_v if bubble["side"] == "left")
     before_right = tuple(bubble["text"] for bubble in before_v if bubble["side"] == "right")
     after_right = tuple(bubble["text"] for bubble in after_v if bubble["side"] == "right")
+    inbound = [bubble for bubble in after_v if bubble["side"] == "left"]
+    if after_in == before_in and after_right == before_right:
+        if inbound and (inbound[-1]["unreadable"] or inbound[-1]["clipped"]):
+            return "unreadable"
+        return None
+    if inbound and (inbound[-1]["unreadable"] or inbound[-1]["clipped"]):
+        return "unreadable"
+    previous = [bubble for bubble in before_v if bubble["side"] == "left"]
+    if inbound and _REACTION.search(inbound[-1]["text"] or "") and (
+            not previous or previous[-1]["text"] != inbound[-1]["text"]):
+        return "reaction"
     if after_right != before_right and after_right[:len(before_right)] == before_right and len(after_right) > len(before_right):
         return "owner_answered"
-    if after_in == before_in and after_right == before_right:
-        return None
     if after_in != before_in:
         return "stale_turn"
     return "owner_answered"

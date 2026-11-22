@@ -753,6 +753,8 @@ class DeliveryTests(unittest.TestCase):
         before = [bubble(1, "left", "yaar yeh reel dekha?", "reel")]
         noisy = [bubble(1, "left", "yaar  yeh reel dekha?"), bubble(2, "right", "Seen")]
         self.assertIsNone(turn_change(before, noisy))
+        same = [bubble(1, "right", "", "reel"), bubble(2, "right", "caption")]
+        self.assertIsNone(turn_change(same, same))
         self.assertEqual(turn_change(before, before + [bubble(2, "left", "aur ek")]), "stale_turn")
         self.assertEqual(turn_change(before, before + [bubble(2, "right", "maine dekh liya")]), "owner_answered")
         calls = []
