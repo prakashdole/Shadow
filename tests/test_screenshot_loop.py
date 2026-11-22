@@ -558,29 +558,38 @@ class PolicyTests(unittest.TestCase):
 
         generate(model="gemini-3.1-flash-lite", parts=[], keys=["old", "new"], call=call, sleep=lambda _s: None)
 
-    def test_send_confirms_after_reload_and_does_not_repeat(self):
+    def test_send_confirms_in_a_separate_tab_and_does_not_repeat(self):
         from shadow.chromium_send import deliver
 
         thread_url = "https://www.instagram.com/direct/t/101/"
         browser = unittest.mock.Mock()
         browser.page_url.return_value = thread_url
+        verifier = unittest.mock.Mock()
+        verifier.page_url.return_value = thread_url
+        browser.new_tab.return_value.__enter__ = unittest.mock.Mock(return_value=verifier)
+        browser.new_tab.return_value.__exit__ = unittest.mock.Mock(return_value=False)
         directory, storage = store()
         self.addCleanup(directory.cleanup)
         self.addCleanup(storage.close)
         conversation = storage.get_or_create_conversation("account", "101")
         decision = storage.add_decision(conversation_id=conversation, source_revision=0,
                                         record_json="{}", versions_json="{}")
-        with patch("shadow.chromium_send._controls", side_effect=[
-            {"composer": [800, 660], "text": "", "copies": 0}, {"focused": True},
-            {"text": "hello", "send": [1210, 660], "documentStarted": 1}, {"copies": 1},
-            {"copies": 1, "text": "", "documentStarted": 1},
-            {"copies": 1, "text": "", "documentStarted": 2},
-        ]):
+        source = iter([{"composer": [800, 660], "text": "", "copies": 0}, {"focused": True},
+                       {"text": "hello", "send": [1210, 660], "documentStarted": 1},
+                       {"copies": 1, "text": "", "documentStarted": 1}])
+
+        def controls(tab, _text):
+            if tab is verifier:
+                return {"copies": 1, "text": "", "documentStarted": 2}
+            return next(source)
+
+        with patch("shadow.chromium_send._controls", side_effect=controls):
             args = dict(thread="101", decision=decision, conversation=conversation, revision=0,
                         text="hello", authority="owner_command")
             self.assertEqual(deliver(browser, storage, **args), {"delivery": "confirmed", "sends": 1})
             self.assertEqual(deliver(browser, storage, **args), {"delivery": "prior_attempt", "sends": 0})
-        browser.command.assert_any_call("Page.reload", ignoreCache=True)
+        verifier.navigate.assert_called_once_with(thread_url)
+        browser.command.assert_called_once_with("Input.insertText", text="hello")
         self.assertEqual(browser.click.call_count, 2)
         self.assertEqual(storage.outbox_items(conversation)[0]["state"], "confirmed")
 
@@ -593,6 +602,18 @@ class PolicyTests(unittest.TestCase):
 
 
 class FixtureTests(unittest.TestCase):
+    def test_fresh_chromium_tab_preserves_the_sending_document(self):
+        from shadow.chromium import chromium, find_chromium
+
+        with TemporaryDirectory() as directory, chromium(find_chromium(), directory) as browser:
+            source = "data:text/html,sending"
+            fresh = "data:text/html,verification"
+            browser.navigate(source)
+            with browser.new_tab() as tab:
+                tab.navigate(fresh)
+                self.assertEqual(tab.page_url(), fresh)
+            self.assertEqual(browser.page_url(), source)
+
     def test_login_viewer_enter_submits_the_focused_form(self):
         from urllib.parse import quote
 

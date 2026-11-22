@@ -38,7 +38,7 @@ def _controls(browser, text):
 
 
 def deliver(browser, storage, *, thread, decision, conversation, revision, text, authority, allow=None):
-    """Click once, and confirm only after reloading Instagram from the server."""
+    """Click once, and confirm from a fresh document while the sending page stays open."""
     if not text or len(text) > 180 or not text.isprintable() or text.strip() != text:
         return {"delivery": "invalid_text", "sends": 0}
     if allow is not None and not allow():
@@ -49,10 +49,10 @@ def deliver(browser, storage, *, thread, decision, conversation, revision, text,
         return {"delivery": "prior_attempt", "sends": 0}
     url = f"https://www.instagram.com/direct/t/{thread}/"
 
-    def current():
-        if browser.page_url().split("?", 1)[0].rstrip("/") != url.rstrip("/"):
+    def current(tab=browser):
+        if tab.page_url().split("?", 1)[0].rstrip("/") != url.rstrip("/"):
             return {}
-        return _controls(browser, text)
+        return _controls(tab, text)
 
     initial = current()
     if not initial.get("composer") or initial.get("text") != "" or initial.get("copies") != 0:
@@ -72,24 +72,29 @@ def deliver(browser, storage, *, thread, decision, conversation, revision, text,
     storage.transition(item, "attempting")
     try:
         browser.click(*ready["send"])
-        # The first bubble can be optimistic. Reload before recording delivery.
-        deadline = monotonic() + 10
-        while monotonic() < deadline:
-            if current().get("copies") == 1:
-                browser.command("Page.reload", ignoreCache=True)
-                break
-            sleep(0.25)
-        else:
-            raise BrowserError("Submitted bubble did not appear.")
-        deadline = monotonic() + 12
-        while monotonic() < deadline:
-            state = current()
-            if (state.get("copies") == 1 and state.get("text") == ""
-                    and state.get("documentStarted") is not None
-                    and state["documentStarted"] != ready["documentStarted"]):
-                storage.confirm_send(item, {"text": text, "evidence": {"reloaded_thread": True}})
-                return {"delivery": "confirmed", "sends": 1}
-            sleep(0.25)
+        # A same-tab reload could cancel Instagram's send while its bubble is still optimistic.
+        confirmed = False
+        with browser.new_tab() as verification:
+            verification.navigate(url)
+            deadline, refresh_at = monotonic() + 15, monotonic() + 3
+            refreshed = False
+            while monotonic() < deadline:
+                try:
+                    state = current(verification)
+                except BrowserError:
+                    state = {}
+                if (state.get("copies") == 1 and state.get("text") == ""
+                        and state.get("documentStarted") is not None
+                        and state["documentStarted"] != ready["documentStarted"]):
+                    confirmed = True
+                    break
+                if not refreshed and state.get("text") is not None and monotonic() >= refresh_at:
+                    verification.command("Page.reload", ignoreCache=True)
+                    refreshed = True
+                sleep(0.25)
+        if confirmed:
+            storage.confirm_send(item, {"text": text, "evidence": {"reloaded_thread": True}})
+            return {"delivery": "confirmed", "sends": 1}
     except (BrowserError, OSError):
         pass
     storage.transition(item, "uncertain")
@@ -128,7 +133,7 @@ def reconcile(browser, storage, item, thread):
             continue
         state = _controls(browser, item["text"])
         origin = state.get("documentStarted")
-        if origin is None or origin == started:
+        if origin is None or origin == started or state.get("text") is None:
             sleep(0.25)
             continue
         if state.get("copies") == 1 and state.get("text") == "":

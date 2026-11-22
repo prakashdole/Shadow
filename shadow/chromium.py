@@ -72,6 +72,26 @@ class Browser:
         tree = self.command("Page.getFrameTree")
         return tree["frameTree"]["frame"]["url"]
 
+    @contextmanager
+    def new_tab(self):
+        """Temporarily address a fresh page in the same signed-in profile."""
+        original = self.session_id
+        target_id = None
+        self.session_id = None
+        try:
+            target_id = self.command("Target.createTarget", url="about:blank", background=True)["targetId"]
+            self.session_id = self.command("Target.attachToTarget", targetId=target_id, flatten=True)["sessionId"]
+            self.command("Emulation.setDeviceMetricsOverride", width=WIDTH, height=HEIGHT,
+                         deviceScaleFactor=1, mobile=False)
+            yield self
+        finally:
+            self.session_id = None
+            try:
+                if target_id is not None:
+                    self.command("Target.closeTarget", targetId=target_id)
+            finally:
+                self.session_id = original
+
 
 def find_chromium():
     if binary := os.environ.get("CHROMIUM_BINARY"):
