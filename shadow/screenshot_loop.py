@@ -643,7 +643,9 @@ def media_key(frames, caption):
 
 
 def _header(image):
-    return hashlib.sha256(png_bytes(image.crop(HEADER))).hexdigest()
+    left, top, right, bottom = HEADER
+    pane_left = thread_box(image)[0]
+    return hashlib.sha256(png_bytes(image.crop((max(left, pane_left), top, right, bottom)))).hexdigest()
 
 
 def _bubble(order, side, text, media=None):

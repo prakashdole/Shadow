@@ -107,6 +107,9 @@ def _busy_before(busy, start) -> bool:
 
 def thread_box(image: Image.Image) -> tuple[int, int, int, int]:
     """Conversation pane only. The list gutter is excluded so a transcript crop stays in one thread."""
+    divider = _inbox_divider(image)
+    if divider is not None:
+        return (divider + 8, 64, 1260, 660)
     return _panels(image)[1]
 
 

@@ -243,6 +243,19 @@ class ScreenTests(unittest.TestCase):
         self.assertLess(left, 700)
         self.assertEqual(right, 1260)
 
+    def test_transcript_crop_excludes_sidebar_badges_left_of_visible_divider(self):
+        before = Image.new("RGB", (1280, 720), "white")
+        draw = ImageDraw.Draw(before)
+        draw.rectangle((96, 300, 383, 348), fill="#333333")
+        draw.rectangle((96, 380, 383, 428), fill="#333333")
+        draw.line((471, 56, 471, 700), fill="#dbdfe4")
+        after = before.copy()
+        ImageDraw.Draw(after).ellipse((408, 141, 415, 150), fill="#4a5df9")
+
+        self.assertGreater(thread_box(before)[0], 471)
+        self.assertEqual(thread_box(before), thread_box(after))
+        self.assertEqual(before.crop(thread_box(before)).tobytes(), after.crop(thread_box(after)).tobytes())
+
     def test_low_confidence_holds(self):
         image = paint(["Alice Example", "Bob Example"])
         browser = Shots([image, image])
