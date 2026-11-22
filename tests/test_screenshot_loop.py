@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageDraw
 
+from shadow.chromium import BrowserError
 from shadow.gemini_client import ProviderFailure, generate
 from shadow.screenshot_loop import (
     HEADER, TASK_CLOSE, TASK_NAMES, TASK_REEL, TASK_ROW, act, claim_inbox_retry, claim_next,
@@ -851,6 +852,29 @@ class DeliveryTests(unittest.TestCase):
                            fallback=None, deliver=lambda **_: (_ for _ in ()).throw(AssertionError("send")))
         self.assertEqual(result["outcome"], "outside_hours")
         self.assertEqual(result["sends"], 0)
+
+    def test_scheduled_check_waits_for_first_usable_inbox_capture(self):
+        inbox = paint(["Alice Example", "Bobby Example"])
+        blank = Image.new("RGB", inbox.size, "white")
+
+        class LoadingInbox(Shots):
+            def navigate(self, url):
+                self.url = url
+
+            def screenshot(self):
+                if self.n == 0:
+                    self.n += 1
+                    raise BrowserError("Chromium refused Page.captureScreenshot.")
+                return super().screenshot()
+
+        browser = LoadingInbox([blank, blank, inbox])
+        result = run_check(browser, Vision(choice="hold"), self.storage, account_id="acct", now=self.day,
+                           primary=lambda *_: self.fail("No unread chat"), fallback=None,
+                           deliver=lambda *_args, **_kwargs: self.fail("No reply"), sleep=lambda _: None)
+
+        self.assertEqual([step["reason"] for step in result["results"]], ["hold"])
+        self.assertEqual(result["results"][0]["screen"], "inbox")
+        self.assertEqual(browser.clicks, [])
 
     def test_queue_survives_a_cleared_badge(self):
         note_opened(self.storage, "acct", "101")

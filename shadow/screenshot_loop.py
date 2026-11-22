@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+from shadow.chromium import BrowserError
 from shadow.contracts import ReplyDraft
 from shadow.decisions import parse_role
 from shadow.gemini_client import ProviderFailure, generate
@@ -669,6 +670,23 @@ def _draft_text(storage, saved):
     return messages[0] if messages else ""
 
 
+def _initial_screen(browser, *, attempts, sleep):
+    pause = time.sleep if sleep is None else sleep
+    for attempt in range(attempts):
+        if attempt:
+            pause(0.4)
+        try:
+            url = browser.page_url() or ""
+            if "/stories/" in url:
+                return "story"
+            screen = classify(open_png(browser.screenshot()), url)
+        except (BrowserError, ValueError):
+            screen = "bad_capture"
+        if screen not in ("bad_capture", "blank", "header_only", "unknown"):
+            return screen
+    return screen
+
+
 def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sleep=None,
              expected_thread_id=None, track_inbox=False, deliver=None, allow_threads=None,
              skip_keys=(), clock=None):
@@ -681,13 +699,11 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
     if deliver is not None and not within_hours(clock()):
         return _done(outcome="outside_hours", reason="outside_hours")
     opened = None
-    try:
-        image = open_png(browser.screenshot())
-    except ValueError:
+    screen = _initial_screen(browser, attempts=16 if deliver is not None else 1, sleep=sleep)
+    if screen == "bad_capture":
         return _done(outcome="hold", reason="bad_capture", recapture=True)
-    if "/stories/" in (browser.page_url() or ""):
+    if screen == "story":
         return _done(outcome="hold", reason="story")
-    screen = classify(image, browser.page_url())
     if screen == "login":
         storage.set_runtime(account_id=account_id, mode=runtime.get("mode") or "observe",
                             autonomy_scope=runtime.get("autonomy_scope") or "none",
@@ -695,6 +711,8 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
         return _done(outcome="login", reason="login_required")
     if screen in ("blank", "header_only", "unknown"):
         return _done(outcome="wait", reason=screen, recapture=True)
+    if deliver is not None and not within_hours(clock()):
+        return _done(outcome="outside_hours", reason="outside_hours")
     if expected_thread_id and thread_id_of(browser.page_url()) != expected_thread_id:
         return _done(outcome="hold", reason="wrong_thread", recapture=True)
     if screen == "inbox":
