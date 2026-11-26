@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+from threading import RLock
 from time import monotonic, sleep
 
 from websocket import WebSocketException, create_connection
@@ -27,29 +28,53 @@ class Browser:
         self.connection = connection
         self.command_id = 0
         self.session_id = None
+        self.target_id = None
+        self.devtools_port = None
+        self._lock = RLock()
         targets = self.command("Target.getTargets")["targetInfos"]
         target = next((target for target in targets
                        if target["type"] == "page" and target["url"] == "about:blank"), None)
         if target is None:
             target = self.command("Target.createTarget", url="about:blank")
+        self.target_id = target["targetId"]
         self.session_id = self.command(
-            "Target.attachToTarget", targetId=target["targetId"], flatten=True
+            "Target.attachToTarget", targetId=self.target_id, flatten=True
         )["sessionId"]
 
     def command(self, method, **params):
-        self.command_id += 1
-        request = {"id": self.command_id, "method": method, "params": params}
-        if self.session_id:
-            request["sessionId"] = self.session_id
-        self.connection.send(json.dumps(request))
-        deadline = monotonic() + 10
-        while monotonic() < deadline:
-            response = json.loads(self.connection.recv())
-            if response.get("id") == self.command_id:
-                if "error" in response:
-                    raise BrowserError(f"Chromium refused {method}.")
-                return response["result"]
-        raise BrowserError(f"Chromium timed out on {method}.")
+        with self._lock:
+            self.command_id += 1
+            request = {"id": self.command_id, "method": method, "params": params}
+            if self.session_id:
+                request["sessionId"] = self.session_id
+            try:
+                self.connection.send(json.dumps(request))
+                deadline = monotonic() + 10
+                while monotonic() < deadline:
+                    response = json.loads(self.connection.recv())
+                    if response.get("id") == self.command_id:
+                        if "error" in response:
+                            raise BrowserError(f"Chromium refused {method}.")
+                        return response["result"]
+                raise BrowserError(f"Chromium timed out on {method}.")
+            except WebSocketException as exc:
+                raise BrowserError(f"Chromium timed out on {method}.") from exc
+
+    def browser_command(self, method, **params):
+        """A browser-level CDP call. Page session commands stay on `command`."""
+        with self._lock:
+            saved = self.session_id
+            self.session_id = None
+            try:
+                return self.command(method, **params)
+            finally:
+                self.session_id = saved
+
+    def evaluate(self, expression):
+        result = self.command("Runtime.evaluate", expression=expression, returnByValue=True)
+        if result.get("exceptionDetails"):
+            raise BrowserError("Page script failed.")
+        return (result.get("result") or {}).get("value")
 
     def screenshot(self):
         result = self.command("Page.captureScreenshot", format="png")
@@ -159,6 +184,7 @@ def chromium(binary, profile, *, headed=False):
                 with closing(create_connection(endpoint, timeout=5, suppress_origin=True,
                                                http_no_proxy=["127.0.0.1"])) as connection:
                     browser = Browser(connection)
+                    browser.devtools_port = int(endpoint.split(":")[2].split("/")[0])
                     try:
                         browser.command("Emulation.setDeviceMetricsOverride", width=WIDTH, height=HEIGHT,
                                         deviceScaleFactor=1, mobile=False)

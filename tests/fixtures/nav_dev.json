@@ -1,0 +1,215 @@
+{
+  "frozen": {
+    "model": "gemini-decision-1",
+    "viewport": "1280x720@1",
+    "min_confidence": 0.8,
+    "agent_browser": "0.45.0",
+    "provider_call_budget": 280,
+    "timing_samples": 100,
+    "latency_gate": "C warm p95 outside Gemini <= A p95 + max(75ms, 15% of A p95)",
+    "promotion": "5 percentage points verified task success, or 20% lower p95 outside Gemini, or 20% fewer billed input tokens per success"
+  },
+  "cases": [
+    {
+      "id": "D001",
+      "split": "dev",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "8001",
+            "name": "DevA",
+            "aria": "DevA",
+            "dot": true
+          },
+          {
+            "id": "8002",
+            "name": "DevB",
+            "aria": "DevB",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "8001"
+        ],
+        "state": "8001"
+      },
+      "inject": "confirm"
+    },
+    {
+      "id": "D002",
+      "split": "dev",
+      "family": "aria",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "8011",
+            "name": "DevA",
+            "aria": "DevA",
+            "dot": false
+          },
+          {
+            "id": "8012",
+            "name": "DevB",
+            "aria": "DevB unread",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "8012"
+        ],
+        "state": "8012"
+      },
+      "inject": "confirm"
+    },
+    {
+      "id": "D003",
+      "split": "dev",
+      "family": "race",
+      "kind": "race",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "8021",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          },
+          {
+            "id": "8022",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "any": [
+          {
+            "outcome": "acted",
+            "opened": [
+              "8022"
+            ],
+            "state": "8022"
+          },
+          {
+            "outcome": "hold",
+            "opened": []
+          }
+        ]
+      },
+      "inject": "confirm",
+      "mutate": "reorder"
+    },
+    {
+      "id": "D004",
+      "split": "dev",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "8031",
+            "name": "DevJ",
+            "aria": "DevJ",
+            "dot": true
+          },
+          {
+            "id": "8032",
+            "name": "Other",
+            "aria": "Other",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "8031",
+          "reel",
+          "close"
+        ],
+        "state": "8031"
+      },
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "D005",
+      "split": "dev",
+      "family": "loading",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "loading",
+        "path": "/direct/t/8041/",
+        "account": "pilot",
+        "thread": "8041"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "inject": "confirm"
+    },
+    {
+      "id": "D006",
+      "split": "dev",
+      "family": "wrong_choice",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "8021",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          },
+          {
+            "id": "8022",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "inject": "wrong"
+    }
+  ]
+}

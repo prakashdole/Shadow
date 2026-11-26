@@ -513,8 +513,15 @@ def _choices(candidates):
 
 
 def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None, names=True, skip_keys=(),
-        prefer_unread=False):
+        prefer_unread=False, observe=None, transport=None, boundary=None, bound_thread=None,
+        bound_path=None, bound_account=None):
     """One verified click, scroll, wait, or hold. Never clicks a stale box."""
+    if observe:
+        from shadow.nav_observe import navigate
+        return navigate(browser, vision, task=task, arm=observe, prefer_unread=prefer_unread,
+                        timeout=timeout, sleep=sleep, transport=transport, boundary=boundary,
+                        bound_thread=bound_thread, bound_path=bound_path, bound_account=bound_account,
+                        skip_keys=skip_keys)
     pause = time.sleep if sleep is None else sleep
     try:
         first = browser.screenshot()
@@ -694,7 +701,7 @@ def _initial_screen(browser, *, attempts, sleep):
 
 def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sleep=None,
              expected_thread_id=None, track_inbox=False, deliver=None, allow_threads=None,
-             skip_keys=(), clock=None):
+             skip_keys=(), clock=None, observe=None, transport=None, boundary=None):
     clock = clock or (lambda: now)
     runtime = storage.get_runtime() or {}
     if runtime.get("pause_reason"):
@@ -720,10 +727,12 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
         return _done(outcome="outside_hours", reason="outside_hours")
     if expected_thread_id and thread_id_of(browser.page_url()) != expected_thread_id:
         return _done(outcome="hold", reason="wrong_thread", recapture=True)
+    nav = {"observe": observe, "transport": transport, "boundary": boundary,
+           "bound_thread": expected_thread_id} if observe else {}
     if screen == "inbox":
         # Scheduled delivery follows an unread row and binds to the thread URL after the click.
         opened = act(browser, vision, task=TASK_ROW, sleep=sleep, names=deliver is None,
-                     skip_keys=skip_keys, prefer_unread=deliver is not None)
+                     skip_keys=skip_keys, prefer_unread=deliver is not None, **nav)
         thread = thread_id_of(browser.page_url())
         if track_inbox and thread:
             ensure_schema(storage)
@@ -739,7 +748,7 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
             return opened
         screen = "thread"
     if classify(open_png(browser.screenshot()), browser.page_url()) == "overlay":
-        closed = act(browser, vision, task=TASK_CLOSE, sleep=sleep)
+        closed = act(browser, vision, task=TASK_CLOSE, sleep=sleep, **nav)
         if closed["outcome"] != "acted":
             return closed
     if classify(open_png(browser.screenshot()), browser.page_url()) != "thread":
@@ -798,7 +807,7 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
         raise ValueError("unverified transcript")
 
     if not evidence_problem(bubbles, {"advanced": True}) and needs_reel(bubbles):
-        started = act(browser, vision, task=TASK_REEL, sleep=sleep)
+        started = act(browser, vision, task=TASK_REEL, sleep=sleep, **nav)
         if started["outcome"] != "acted":
             started["thread_id"] = thread_id
             return started
@@ -808,9 +817,9 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
             try:
                 summary = _summarize(storage, vision, sampled, _caption(bubbles))
             except ProviderFailure as exc:
-                act(browser, vision, task=TASK_CLOSE, sleep=sleep)
+                act(browser, vision, task=TASK_CLOSE, sleep=sleep, **nav)
                 return _done(outcome="pending", reason=exc.code, recapture=True, thread_id=thread_id)
-        closed = act(browser, vision, task=TASK_CLOSE, sleep=sleep)
+        closed = act(browser, vision, task=TASK_CLOSE, sleep=sleep, **nav)
         if closed["outcome"] != "acted" or _header(open_png(browser.screenshot())) != header:
             return _done(outcome="hold", reason="wrong_thread", recapture=True, thread_id=thread_id)
         if thread_id_of(browser.page_url()) != thread_id:
@@ -859,7 +868,7 @@ def run_turn(browser, vision, storage, *, account_id, now, primary, fallback, sl
 
 
 def run_check(browser, vision, storage, *, account_id, now, primary, fallback, deliver,
-              allow_threads=None, sleep=None, clock=None):
+              allow_threads=None, sleep=None, clock=None, observe=None, transport=None, boundary=None):
     """One scheduled inbox check, carrying forward unfinished chats."""
     clock = clock or (lambda: now)
     if not within_hours(clock()):
@@ -891,13 +900,13 @@ def run_check(browser, vision, storage, *, account_id, now, primary, fallback, d
             result = run_turn(browser, vision, storage, account_id=account_id, now=clock(),
                               primary=primary, fallback=fallback, sleep=sleep,
                               expected_thread_id=queued, deliver=deliver, allow_threads=allow_threads,
-                              clock=clock)
+                              clock=clock, observe=observe, transport=transport, boundary=boundary)
         else:
             browser.navigate("https://www.instagram.com/direct/inbox/")
             result = run_turn(browser, vision, storage, account_id=account_id, now=clock(),
                               primary=primary, fallback=fallback, sleep=sleep, track_inbox=True,
                               deliver=deliver, allow_threads=allow_threads, skip_keys=rows,
-                              clock=clock)
+                              clock=clock, observe=observe, transport=transport, boundary=boundary)
         results.append(result)
         sends += result.get("sends") or 0
         if str(result.get("opened") or "").startswith("row-"):
@@ -980,13 +989,15 @@ class LiveVision:
     def __init__(self, keys):
         self.keys = keys
 
-    def choose(self, png, task, choices, candidates):
+    def choose(self, png, task, choices, candidates, evidence=None, transport=None, boundary=None,
+               trace=None):
         del candidates
         last = None
         started = time.monotonic()
         for key in self.keys:
             try:
-                choice, confidence = choose_action(key, png, task, choices)
+                choice, confidence = choose_action(key, png, task, choices, evidence=evidence,
+                                                   transport=transport, boundary=boundary, trace=trace)
                 log.info("decision_1 latency_ms=%s", round((time.monotonic() - started) * 1000))
                 return choice, confidence
             except DecisionError as exc:

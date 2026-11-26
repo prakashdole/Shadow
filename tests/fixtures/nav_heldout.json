@@ -1,0 +1,3902 @@
+{
+  "frozen": {
+    "model": "gemini-decision-1",
+    "viewport": "1280x720@1",
+    "min_confidence": 0.8,
+    "agent_browser": "0.45.0",
+    "provider_call_budget": 280,
+    "timing_samples": 100,
+    "latency_gate": "C warm p95 outside Gemini <= A p95 + max(75ms, 15% of A p95)",
+    "promotion": "5 percentage points verified task success, or 20% lower p95 outside Gemini, or 20% fewer billed input tokens per success"
+  },
+  "cases": [
+    {
+      "id": "H001",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4100",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": true
+          },
+          {
+            "id": "4101",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4100"
+        ],
+        "state": "4100"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H002",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4110",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": false
+          },
+          {
+            "id": "4111",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          },
+          {
+            "id": "4112",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4111"
+        ],
+        "state": "4111"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H003",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4120",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          },
+          {
+            "id": "4121",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4120"
+        ],
+        "state": "4120"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H004",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4130",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": true
+          },
+          {
+            "id": "4131",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": false
+          },
+          {
+            "id": "4132",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4130"
+        ],
+        "state": "4130"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H005",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4140",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": true
+          },
+          {
+            "id": "4141",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4140"
+        ],
+        "state": "4140"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H006",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4150",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": false
+          },
+          {
+            "id": "4151",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": false
+          },
+          {
+            "id": "4152",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4152"
+        ],
+        "state": "4152"
+      },
+      "live": true,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H007",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4160",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": true
+          },
+          {
+            "id": "4161",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4160"
+        ],
+        "state": "4160"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H008",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4170",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": false
+          },
+          {
+            "id": "4171",
+            "name": "Isha",
+            "aria": "Isha",
+            "dot": true
+          },
+          {
+            "id": "4172",
+            "name": "Jay",
+            "aria": "Jay",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4171"
+        ],
+        "state": "4171"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H009",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4180",
+            "name": "Isha",
+            "aria": "Isha",
+            "dot": true
+          },
+          {
+            "id": "4181",
+            "name": "Jay",
+            "aria": "Jay",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4180"
+        ],
+        "state": "4180"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H010",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4190",
+            "name": "Jay",
+            "aria": "Jay",
+            "dot": true
+          },
+          {
+            "id": "4191",
+            "name": "Kala",
+            "aria": "Kala",
+            "dot": false
+          },
+          {
+            "id": "4192",
+            "name": "Lila",
+            "aria": "Lila",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4190"
+        ],
+        "state": "4190"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H011",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4200",
+            "name": "Kala",
+            "aria": "Kala",
+            "dot": true
+          },
+          {
+            "id": "4201",
+            "name": "Lila",
+            "aria": "Lila",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4200"
+        ],
+        "state": "4200"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H012",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4210",
+            "name": "Lila",
+            "aria": "Lila",
+            "dot": false
+          },
+          {
+            "id": "4211",
+            "name": "Maya",
+            "aria": "Maya",
+            "dot": false
+          },
+          {
+            "id": "4212",
+            "name": "Neil",
+            "aria": "Neil",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4212"
+        ],
+        "state": "4212"
+      },
+      "live": true,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H013",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4220",
+            "name": "Maya",
+            "aria": "Maya",
+            "dot": true
+          },
+          {
+            "id": "4221",
+            "name": "Neil",
+            "aria": "Neil",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4220"
+        ],
+        "state": "4220"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H014",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4230",
+            "name": "Neil",
+            "aria": "Neil",
+            "dot": false
+          },
+          {
+            "id": "4231",
+            "name": "Omar",
+            "aria": "Omar",
+            "dot": true
+          },
+          {
+            "id": "4232",
+            "name": "Priya",
+            "aria": "Priya",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4231"
+        ],
+        "state": "4231"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H015",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4240",
+            "name": "Omar",
+            "aria": "Omar",
+            "dot": true
+          },
+          {
+            "id": "4241",
+            "name": "Priya",
+            "aria": "Priya",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4240"
+        ],
+        "state": "4240"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H016",
+      "split": "heldout",
+      "family": "visual",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "4250",
+            "name": "Priya",
+            "aria": "Priya",
+            "dot": true
+          },
+          {
+            "id": "4251",
+            "name": "Quinn",
+            "aria": "Quinn",
+            "dot": false
+          },
+          {
+            "id": "4252",
+            "name": "Ravi",
+            "aria": "Ravi",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "4250"
+        ],
+        "state": "4250"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H017",
+      "split": "heldout",
+      "family": "lowest",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5100",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": true
+          },
+          {
+            "id": "5101",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5101"
+        ],
+        "state": "5101"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H018",
+      "split": "heldout",
+      "family": "lowest",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5110",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          },
+          {
+            "id": "5111",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5111"
+        ],
+        "state": "5111"
+      },
+      "live": true,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H019",
+      "split": "heldout",
+      "family": "lowest",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5120",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          },
+          {
+            "id": "5121",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5121"
+        ],
+        "state": "5121"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H020",
+      "split": "heldout",
+      "family": "lowest",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5130",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": true
+          },
+          {
+            "id": "5131",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5131"
+        ],
+        "state": "5131"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H021",
+      "split": "heldout",
+      "family": "lowest",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5140",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": true
+          },
+          {
+            "id": "5141",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5141"
+        ],
+        "state": "5141"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H022",
+      "split": "heldout",
+      "family": "lowest",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5150",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": true
+          },
+          {
+            "id": "5151",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5151"
+        ],
+        "state": "5151"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H023",
+      "split": "heldout",
+      "family": "lowest",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5160",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": true
+          },
+          {
+            "id": "5161",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5161"
+        ],
+        "state": "5161"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H024",
+      "split": "heldout",
+      "family": "lowest",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5170",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": true
+          },
+          {
+            "id": "5171",
+            "name": "Isha",
+            "aria": "Isha",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5171"
+        ],
+        "state": "5171"
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H025",
+      "split": "heldout",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5200",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": false
+          },
+          {
+            "id": "5201",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5201"
+        ],
+        "state": "5201"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H026",
+      "split": "heldout",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5210",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": false
+          },
+          {
+            "id": "5211",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5211"
+        ],
+        "state": "5211"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H027",
+      "split": "heldout",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5220",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": false
+          },
+          {
+            "id": "5221",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5221"
+        ],
+        "state": "5221"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H028",
+      "split": "heldout",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5230",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": false
+          },
+          {
+            "id": "5231",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5231"
+        ],
+        "state": "5231"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H029",
+      "split": "heldout",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5240",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": false
+          },
+          {
+            "id": "5241",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5241"
+        ],
+        "state": "5241"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H030",
+      "split": "heldout",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5250",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": false
+          },
+          {
+            "id": "5251",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5251"
+        ],
+        "state": "5251"
+      },
+      "live": true,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H031",
+      "split": "heldout",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5260",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": false
+          },
+          {
+            "id": "5261",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5261"
+        ],
+        "state": "5261"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H032",
+      "split": "heldout",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5270",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": false
+          },
+          {
+            "id": "5271",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5271"
+        ],
+        "state": "5271"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H033",
+      "split": "heldout",
+      "family": "aria",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5300",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": false
+          },
+          {
+            "id": "5301",
+            "name": "Bela",
+            "aria": "Bela unread",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5301"
+        ],
+        "state": "5301"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H034",
+      "split": "heldout",
+      "family": "aria",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5310",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": false
+          },
+          {
+            "id": "5311",
+            "name": "Chet",
+            "aria": "Chet unread",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5311"
+        ],
+        "state": "5311"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H035",
+      "split": "heldout",
+      "family": "aria",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5320",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": false
+          },
+          {
+            "id": "5321",
+            "name": "Diya",
+            "aria": "Diya unread",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5321"
+        ],
+        "state": "5321"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H036",
+      "split": "heldout",
+      "family": "aria",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5330",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": false
+          },
+          {
+            "id": "5331",
+            "name": "Evan",
+            "aria": "Evan unread",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5331"
+        ],
+        "state": "5331"
+      },
+      "live": true,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H037",
+      "split": "heldout",
+      "family": "aria",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5340",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": false
+          },
+          {
+            "id": "5341",
+            "name": "Fay",
+            "aria": "Fay unread",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5341"
+        ],
+        "state": "5341"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H038",
+      "split": "heldout",
+      "family": "aria",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5350",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": false
+          },
+          {
+            "id": "5351",
+            "name": "Gita",
+            "aria": "Gita unread",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5351"
+        ],
+        "state": "5351"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H039",
+      "split": "heldout",
+      "family": "aria",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5360",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": false
+          },
+          {
+            "id": "5361",
+            "name": "Hari",
+            "aria": "Hari unread",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5361"
+        ],
+        "state": "5361"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H040",
+      "split": "heldout",
+      "family": "aria",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5370",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": false
+          },
+          {
+            "id": "5371",
+            "name": "Isha",
+            "aria": "Isha unread",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5371"
+        ],
+        "state": "5371"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H041",
+      "split": "heldout",
+      "family": "reel",
+      "kind": "act",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/5400/",
+        "account": "pilot",
+        "thread": "5400",
+        "state": "5400"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "reel"
+        ],
+        "state": "reel"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H042",
+      "split": "heldout",
+      "family": "reel",
+      "kind": "act",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/5401/",
+        "account": "pilot",
+        "thread": "5401",
+        "state": "5401"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "reel"
+        ],
+        "state": "reel"
+      },
+      "live": true,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H043",
+      "split": "heldout",
+      "family": "reel",
+      "kind": "act",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/5402/",
+        "account": "pilot",
+        "thread": "5402",
+        "state": "5402"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "reel"
+        ],
+        "state": "reel"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H044",
+      "split": "heldout",
+      "family": "reel",
+      "kind": "act",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/5403/",
+        "account": "pilot",
+        "thread": "5403",
+        "state": "5403"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "reel"
+        ],
+        "state": "reel"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H045",
+      "split": "heldout",
+      "family": "reel",
+      "kind": "act",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/5404/",
+        "account": "pilot",
+        "thread": "5404",
+        "state": "5404"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "reel"
+        ],
+        "state": "reel"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H046",
+      "split": "heldout",
+      "family": "reel",
+      "kind": "act",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/5405/",
+        "account": "pilot",
+        "thread": "5405",
+        "state": "5405"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "reel"
+        ],
+        "state": "reel"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H047",
+      "split": "heldout",
+      "family": "reel",
+      "kind": "act",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/5406/",
+        "account": "pilot",
+        "thread": "5406",
+        "state": "5406"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "reel"
+        ],
+        "state": "reel"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H048",
+      "split": "heldout",
+      "family": "reel",
+      "kind": "act",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/5407/",
+        "account": "pilot",
+        "thread": "5407",
+        "state": "5407"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "reel"
+        ],
+        "state": "reel"
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H049",
+      "split": "heldout",
+      "family": "close",
+      "kind": "act",
+      "task": "close",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/5500/",
+        "account": "pilot",
+        "thread": "5500",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "close"
+        ],
+        "state": "5500"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H050",
+      "split": "heldout",
+      "family": "close",
+      "kind": "act",
+      "task": "close",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/5501/",
+        "account": "pilot",
+        "thread": "5501",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "close"
+        ],
+        "state": "5501"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H051",
+      "split": "heldout",
+      "family": "close",
+      "kind": "act",
+      "task": "close",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/5502/",
+        "account": "pilot",
+        "thread": "5502",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "close"
+        ],
+        "state": "5502"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H052",
+      "split": "heldout",
+      "family": "close",
+      "kind": "act",
+      "task": "close",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/5503/",
+        "account": "pilot",
+        "thread": "5503",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "close"
+        ],
+        "state": "5503"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H053",
+      "split": "heldout",
+      "family": "close",
+      "kind": "act",
+      "task": "close",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/5504/",
+        "account": "pilot",
+        "thread": "5504",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "close"
+        ],
+        "state": "5504"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H054",
+      "split": "heldout",
+      "family": "close",
+      "kind": "act",
+      "task": "close",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/5505/",
+        "account": "pilot",
+        "thread": "5505",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "close"
+        ],
+        "state": "5505"
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H055",
+      "split": "heldout",
+      "family": "close",
+      "kind": "act",
+      "task": "close",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/5506/",
+        "account": "pilot",
+        "thread": "5506",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "close"
+        ],
+        "state": "5506"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H056",
+      "split": "heldout",
+      "family": "close",
+      "kind": "act",
+      "task": "close",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/5507/",
+        "account": "pilot",
+        "thread": "5507",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "close"
+        ],
+        "state": "5507"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H057",
+      "split": "heldout",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5600",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": true
+          },
+          {
+            "id": "5700",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5600",
+          "reel",
+          "close"
+        ],
+        "state": "5600"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "H058",
+      "split": "heldout",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5601",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          },
+          {
+            "id": "5701",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5601",
+          "reel",
+          "close"
+        ],
+        "state": "5601"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "H059",
+      "split": "heldout",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5602",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          },
+          {
+            "id": "5702",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5602",
+          "reel",
+          "close"
+        ],
+        "state": "5602"
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "H060",
+      "split": "heldout",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5603",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": true
+          },
+          {
+            "id": "5703",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5603",
+          "reel",
+          "close"
+        ],
+        "state": "5603"
+      },
+      "live": true,
+      "reserve": true,
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "H061",
+      "split": "heldout",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5604",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": true
+          },
+          {
+            "id": "5704",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5604",
+          "reel",
+          "close"
+        ],
+        "state": "5604"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "H062",
+      "split": "heldout",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5605",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": true
+          },
+          {
+            "id": "5705",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5605",
+          "reel",
+          "close"
+        ],
+        "state": "5605"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "H063",
+      "split": "heldout",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5606",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": true
+          },
+          {
+            "id": "5706",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5606",
+          "reel",
+          "close"
+        ],
+        "state": "5606"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "H064",
+      "split": "heldout",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5607",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": true
+          },
+          {
+            "id": "5707",
+            "name": "Isha",
+            "aria": "Isha",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5607",
+          "reel",
+          "close"
+        ],
+        "state": "5607"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "H065",
+      "split": "heldout",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5608",
+            "name": "Isha",
+            "aria": "Isha",
+            "dot": true
+          },
+          {
+            "id": "5708",
+            "name": "Jay",
+            "aria": "Jay",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5608",
+          "reel",
+          "close"
+        ],
+        "state": "5608"
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "H066",
+      "split": "heldout",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5609",
+            "name": "Jay",
+            "aria": "Jay",
+            "dot": true
+          },
+          {
+            "id": "5709",
+            "name": "Kala",
+            "aria": "Kala",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "5609",
+          "reel",
+          "close"
+        ],
+        "state": "5609"
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "confirm",
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "H067",
+      "split": "heldout",
+      "family": "race",
+      "kind": "race",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5800",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          },
+          {
+            "id": "5801",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "any": [
+          {
+            "outcome": "acted",
+            "opened": [
+              "5801"
+            ],
+            "state": "5801"
+          },
+          {
+            "outcome": "hold",
+            "opened": []
+          }
+        ]
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm",
+      "mutate": "reorder"
+    },
+    {
+      "id": "H068",
+      "split": "heldout",
+      "family": "race",
+      "kind": "race",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5810",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          },
+          {
+            "id": "5811",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "any": [
+          {
+            "outcome": "acted",
+            "opened": [
+              "5811"
+            ],
+            "state": "5811"
+          },
+          {
+            "outcome": "hold",
+            "opened": []
+          }
+        ]
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm",
+      "mutate": "reorder"
+    },
+    {
+      "id": "H069",
+      "split": "heldout",
+      "family": "race",
+      "kind": "race",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5820",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          },
+          {
+            "id": "5821",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "any": [
+          {
+            "outcome": "acted",
+            "opened": [
+              "5821"
+            ],
+            "state": "5821"
+          },
+          {
+            "outcome": "hold",
+            "opened": []
+          }
+        ]
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm",
+      "mutate": "reorder"
+    },
+    {
+      "id": "H070",
+      "split": "heldout",
+      "family": "race",
+      "kind": "race",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5830",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          },
+          {
+            "id": "5831",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "any": [
+          {
+            "outcome": "acted",
+            "opened": [
+              "5831"
+            ],
+            "state": "5831"
+          },
+          {
+            "outcome": "hold",
+            "opened": []
+          }
+        ]
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm",
+      "mutate": "reorder"
+    },
+    {
+      "id": "H071",
+      "split": "heldout",
+      "family": "race",
+      "kind": "race",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5840",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          },
+          {
+            "id": "5841",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "any": [
+          {
+            "outcome": "acted",
+            "opened": [
+              "5841"
+            ],
+            "state": "5841"
+          },
+          {
+            "outcome": "hold",
+            "opened": []
+          }
+        ]
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "mutate": "reorder"
+    },
+    {
+      "id": "H072",
+      "split": "heldout",
+      "family": "race",
+      "kind": "race",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5850",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          },
+          {
+            "id": "5851",
+            "name": "Sam",
+            "aria": "Sam",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "any": [
+          {
+            "outcome": "acted",
+            "opened": [
+              "5851"
+            ],
+            "state": "5851"
+          },
+          {
+            "outcome": "hold",
+            "opened": []
+          }
+        ]
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "confirm",
+      "mutate": "reorder"
+    },
+    {
+      "id": "H073",
+      "split": "heldout",
+      "family": "missing",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5900",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          },
+          {
+            "id": "5901",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H074",
+      "split": "heldout",
+      "family": "missing",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5910",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          },
+          {
+            "id": "5911",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H075",
+      "split": "heldout",
+      "family": "missing",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5920",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          },
+          {
+            "id": "5921",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H076",
+      "split": "heldout",
+      "family": "missing",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5930",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          },
+          {
+            "id": "5931",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H077",
+      "split": "heldout",
+      "family": "missing",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5940",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          },
+          {
+            "id": "5941",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H078",
+      "split": "heldout",
+      "family": "missing",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5950",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          },
+          {
+            "id": "5951",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H079",
+      "split": "heldout",
+      "family": "missing",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5960",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          },
+          {
+            "id": "5961",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H080",
+      "split": "heldout",
+      "family": "missing",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "5970",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          },
+          {
+            "id": "5971",
+            "name": "",
+            "aria": "Conversation",
+            "dot": false
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H081",
+      "split": "heldout",
+      "family": "loading",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "loading",
+        "path": "/direct/t/6000/",
+        "account": "pilot",
+        "thread": "6000"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H082",
+      "split": "heldout",
+      "family": "loading",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "loading",
+        "path": "/direct/t/6001/",
+        "account": "pilot",
+        "thread": "6001"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H083",
+      "split": "heldout",
+      "family": "loading",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "loading",
+        "path": "/direct/t/6002/",
+        "account": "pilot",
+        "thread": "6002"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H084",
+      "split": "heldout",
+      "family": "loading",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "loading",
+        "path": "/direct/t/6003/",
+        "account": "pilot",
+        "thread": "6003"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "live": true,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H085",
+      "split": "heldout",
+      "family": "loading",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "loading",
+        "path": "/direct/t/6004/",
+        "account": "pilot",
+        "thread": "6004"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H086",
+      "split": "heldout",
+      "family": "loading",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "loading",
+        "path": "/direct/t/6005/",
+        "account": "pilot",
+        "thread": "6005"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H087",
+      "split": "heldout",
+      "family": "covered",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/6100/",
+        "account": "pilot",
+        "thread": "6100",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H088",
+      "split": "heldout",
+      "family": "covered",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/6101/",
+        "account": "pilot",
+        "thread": "6101",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H089",
+      "split": "heldout",
+      "family": "covered",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/6102/",
+        "account": "pilot",
+        "thread": "6102",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm"
+    },
+    {
+      "id": "H090",
+      "split": "heldout",
+      "family": "covered",
+      "kind": "wait",
+      "task": "row",
+      "screen": {
+        "screen": "player",
+        "path": "/direct/t/6103/",
+        "account": "pilot",
+        "thread": "6103",
+        "state": "reel"
+      },
+      "expect": {
+        "outcome": "wait",
+        "opened": []
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "confirm"
+    },
+    {
+      "id": "H091",
+      "split": "heldout",
+      "family": "wrong_tab",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/explore/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6200",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm",
+      "bound_path": "/direct/inbox/"
+    },
+    {
+      "id": "H092",
+      "split": "heldout",
+      "family": "wrong_tab",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/explore/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6201",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm",
+      "bound_path": "/direct/inbox/"
+    },
+    {
+      "id": "H093",
+      "split": "heldout",
+      "family": "wrong_tab",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/explore/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6202",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "bound_path": "/direct/inbox/"
+    },
+    {
+      "id": "H094",
+      "split": "heldout",
+      "family": "account",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "other",
+        "rows": [
+          {
+            "id": "6290",
+            "name": "Uma",
+            "aria": "Uma",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "bound_account": "pilot"
+    },
+    {
+      "id": "H095",
+      "split": "heldout",
+      "family": "wrong_thread",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/6300/",
+        "account": "pilot",
+        "thread": "6300",
+        "state": "6300"
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": true,
+      "reserve": false,
+      "inject": "confirm",
+      "bound_thread": "1001"
+    },
+    {
+      "id": "H096",
+      "split": "heldout",
+      "family": "wrong_thread",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/6301/",
+        "account": "pilot",
+        "thread": "6301",
+        "state": "6301"
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": true,
+      "reserve": true,
+      "inject": "confirm",
+      "bound_thread": "1001"
+    },
+    {
+      "id": "H097",
+      "split": "heldout",
+      "family": "wrong_thread",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/6302/",
+        "account": "pilot",
+        "thread": "6302",
+        "state": "6302"
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "bound_thread": "1001"
+    },
+    {
+      "id": "H098",
+      "split": "heldout",
+      "family": "wrong_thread",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/6303/",
+        "account": "pilot",
+        "thread": "6303",
+        "state": "6303"
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "bound_thread": "1001"
+    },
+    {
+      "id": "H099",
+      "split": "heldout",
+      "family": "stale",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6400",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "mutate": "replace"
+    },
+    {
+      "id": "H100",
+      "split": "heldout",
+      "family": "stale",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6401",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "mutate": "replace"
+    },
+    {
+      "id": "H101",
+      "split": "heldout",
+      "family": "stale",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6402",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "mutate": "replace"
+    },
+    {
+      "id": "H102",
+      "split": "heldout",
+      "family": "stale",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6403",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "confirm",
+      "mutate": "replace"
+    },
+    {
+      "id": "H103",
+      "split": "heldout",
+      "family": "detach",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6500",
+            "name": "Detached",
+            "aria": "Detached",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "detach": true
+    },
+    {
+      "id": "H104",
+      "split": "heldout",
+      "family": "detach",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6501",
+            "name": "Detached",
+            "aria": "Detached",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "confirm",
+      "detach": true
+    },
+    {
+      "id": "H105",
+      "split": "heldout",
+      "family": "timeout",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6600",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "timeout"
+    },
+    {
+      "id": "H106",
+      "split": "heldout",
+      "family": "timeout",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6601",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "timeout"
+    },
+    {
+      "id": "H107",
+      "split": "heldout",
+      "family": "rate",
+      "kind": "pending",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6700",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "pending",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "rate"
+    },
+    {
+      "id": "H108",
+      "split": "heldout",
+      "family": "rate",
+      "kind": "pending",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6701",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "pending",
+        "opened": []
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "rate"
+    },
+    {
+      "id": "H109",
+      "split": "heldout",
+      "family": "malformed",
+      "kind": "pending",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6800",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "pending",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "malformed"
+    },
+    {
+      "id": "H110",
+      "split": "heldout",
+      "family": "malformed",
+      "kind": "pending",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6801",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "pending",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "malformed"
+    },
+    {
+      "id": "H111",
+      "split": "heldout",
+      "family": "malformed",
+      "kind": "pending",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6802",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "pending",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "malformed"
+    },
+    {
+      "id": "H112",
+      "split": "heldout",
+      "family": "malformed",
+      "kind": "pending",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6803",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "pending",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "malformed"
+    },
+    {
+      "id": "H113",
+      "split": "heldout",
+      "family": "wrong_choice",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6900",
+            "name": "Asha",
+            "aria": "Asha",
+            "dot": true
+          },
+          {
+            "id": "6901",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "wrong"
+    },
+    {
+      "id": "H114",
+      "split": "heldout",
+      "family": "wrong_choice",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6910",
+            "name": "Bela",
+            "aria": "Bela",
+            "dot": true
+          },
+          {
+            "id": "6911",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "wrong"
+    },
+    {
+      "id": "H115",
+      "split": "heldout",
+      "family": "wrong_choice",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6920",
+            "name": "Chet",
+            "aria": "Chet",
+            "dot": true
+          },
+          {
+            "id": "6921",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "wrong"
+    },
+    {
+      "id": "H116",
+      "split": "heldout",
+      "family": "wrong_choice",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6930",
+            "name": "Diya",
+            "aria": "Diya",
+            "dot": true
+          },
+          {
+            "id": "6931",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "wrong"
+    },
+    {
+      "id": "H117",
+      "split": "heldout",
+      "family": "wrong_choice",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6940",
+            "name": "Evan",
+            "aria": "Evan",
+            "dot": true
+          },
+          {
+            "id": "6941",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "wrong"
+    },
+    {
+      "id": "H118",
+      "split": "heldout",
+      "family": "wrong_choice",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6950",
+            "name": "Fay",
+            "aria": "Fay",
+            "dot": true
+          },
+          {
+            "id": "6951",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "wrong"
+    },
+    {
+      "id": "H119",
+      "split": "heldout",
+      "family": "wrong_choice",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6960",
+            "name": "Gita",
+            "aria": "Gita",
+            "dot": true
+          },
+          {
+            "id": "6961",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": false,
+      "inject": "wrong"
+    },
+    {
+      "id": "H120",
+      "split": "heldout",
+      "family": "wrong_choice",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "rows": [
+          {
+            "id": "6970",
+            "name": "Hari",
+            "aria": "Hari",
+            "dot": true
+          },
+          {
+            "id": "6971",
+            "name": "Isha",
+            "aria": "Isha",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "live": false,
+      "reserve": true,
+      "inject": "wrong"
+    }
+  ]
+}

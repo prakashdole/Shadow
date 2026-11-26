@@ -229,6 +229,8 @@ def main(argv=None):
     parser.add_argument("--measure", action="store_true", help="Print startup, capture and memory, then exit.")
     parser.add_argument("--browser")
     parser.add_argument("--profile", type=Path)
+    parser.add_argument("--observe", choices=("screenshot", "playwright", "agent-browser"),
+                        help="Opt-in navigation evidence. Omit to keep the screenshot act() path.")
     args = parser.parse_args(argv)
     if args.fixture and args.live:
         parser.error("Choose either --fixture or --live.")
@@ -325,7 +327,8 @@ def main(argv=None):
         with opened as storage, chromium(binary, profile) as browser:
             result = run_check(browser, vision, storage, account_id=args.account, now=utcnow(),
                                primary=openai_primary(key), fallback=gemini_fallback(keys),
-                               deliver=deliver, allow_threads=args.allow_threads or None)
+                               deliver=deliver, allow_threads=args.allow_threads or None,
+                               observe=args.observe)
         print(json.dumps({key: value for key, value in result.items() if key != "bubbles"}))
         return
     with open_storage(directory) as storage, chromium(binary, profile) as browser:
@@ -343,7 +346,8 @@ def main(argv=None):
             time.sleep(2)
         result = run_turn(browser, vision, storage, account_id=args.account, now=utcnow(),
                           primary=openai_primary(key), fallback=gemini_fallback(keys),
-                          expected_thread_id=expected, track_inbox=tracking and expected is None)
+                          expected_thread_id=expected, track_inbox=tracking and expected is None,
+                          observe=args.observe)
         if tracking:
             finish_inbox_turn(storage, args.account, result)
         if (args.show_draft or args.send) and result.get("decision_id"):
