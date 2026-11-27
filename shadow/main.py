@@ -440,5 +440,21 @@ def restore_check_command(backup, scratch):
         raise SystemExit(2)
 
 
+@cli.command("reply-lab")
+@click.option("--directory", "directory", default=None, type=click.Path())
+@click.option("--port", default=8765, show_default=True, type=int)
+@click.option("--fake", is_flag=True, help="Seed four deterministic local models.")
+def reply_lab_command(directory, port, fake):
+    """Compare four reply models on one frozen transcript. Never sends a DM."""
+    from shadow.reply_lab import main as lab_main
+
+    argv = ["--port", str(port)]
+    if directory:
+        argv.extend(["--dir", directory])
+    if fake:
+        argv.append("--fake")
+    lab_main(argv)
+
+
 if __name__ == "__main__":
     cli()

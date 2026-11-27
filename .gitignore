@@ -56,5 +56,6 @@ __pycache__/
 # stays exposed, and python3 tools/privacy_audit.py still reports it. See
 # plan/history/plan/privacy.md.
 /probe.json
+/reply-lab/
 /drive-shots/
 /.obsidian/
