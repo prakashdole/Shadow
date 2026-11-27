@@ -255,6 +255,7 @@ def _poll(session, predicate, timeout, pause):
 def _ask(session, vision, spans, bag, image, task, choices, evidence, instructions, transport,
          boundary, original, kind, url, crop=None, card=None):
     trace = {}
+    started = monotonic()
 
     def gate(event):
         event["original"] = original
@@ -267,15 +268,18 @@ def _ask(session, vision, spans, bag, image, task, choices, evidence, instructio
             boundary(event)
 
     try:
-        with spans.model():
-            choice, confidence = vision.choose(
-                image, task, choices, [], evidence=evidence or None, transport=transport,
-                boundary=gate, trace=trace, instructions=instructions)
+        choice, confidence = vision.choose(
+            image, task, choices, [], evidence=evidence or None, transport=transport,
+            boundary=gate, trace=trace, instructions=instructions)
     finally:
+        finished = monotonic()
         start, end = trace.get("construct_start"), trace.get("construct_end")
         if start is not None and end is not None:
             spans.rows.append(("request_construction", start, end))
-    _note(bag, trace)
+            spans.gemini.append((end, finished))
+        else:
+            spans.gemini.append((started, finished))
+        _note(bag, trace)
     return choice, float(confidence)
 
 
