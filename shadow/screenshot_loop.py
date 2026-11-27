@@ -230,11 +230,14 @@ def voice_text():
     return files("shadow").joinpath("reply_style.md").read_text(encoding="utf-8").strip()
 
 
-def reply_system(storage=None, conversation_id=None):
-    extra = ()
+def reply_system(storage=None, conversation_id=None, extra=()):
+    found = ()
     if storage is not None and conversation_id is not None:
         from shadow.context_memory import ContextMemory
-        extra = ContextMemory(storage).rules(conversation_id)
+        found = ContextMemory(storage).rules(conversation_id)
+    if type(extra) not in (tuple, list) or any(type(item) is not str or not item.strip() for item in extra):
+        raise ValueError("extra rules must be non-empty strings")
+    extra = tuple(found) + tuple(item.strip() for item in extra)
     rules = ("Return one JSON object and nothing else, with exactly these fields: "
              '{"schema_version":1,"action":"reply","reason_code":"ok","messages":["one short dm"],'
              '"evidence_event_ids":[],"used_memory_ids":[]}. '
