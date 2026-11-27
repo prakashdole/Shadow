@@ -229,7 +229,7 @@ def main(argv=None):
     parser.add_argument("--measure", action="store_true", help="Print startup, capture and memory, then exit.")
     parser.add_argument("--browser")
     parser.add_argument("--profile", type=Path)
-    parser.add_argument("--observe", choices=("screenshot", "playwright", "agent-browser"),
+    parser.add_argument("--observe", choices=("screenshot", "playwright", "agent-browser", "agent-nav"),
                         help="Opt-in navigation evidence. Omit to keep the screenshot act() path.")
     args = parser.parse_args(argv)
     if args.fixture and args.live:
@@ -331,7 +331,12 @@ def main(argv=None):
                                observe=args.observe)
         print(json.dumps({key: value for key, value in result.items() if key != "bubbles"}))
         return
-    with open_storage(directory) as storage, chromium(binary, profile) as browser:
+    if args.observe == "agent-nav":
+        from shadow.agent_session import AgentSession
+        browser_cm = AgentSession(profile, binary)
+    else:
+        browser_cm = chromium(binary, profile)
+    with open_storage(directory) as storage, browser_cm as browser:
         auto = args.live and not args.thread
         state = storage.get_runtime() or {}
         tracking = auto and not state.get("pause_reason") and state.get("account_id") in (None, "", args.account)

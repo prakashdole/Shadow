@@ -26,7 +26,7 @@ def decision_instructions(task: str, evidence: str | None = None) -> str:
 
 
 def choose_action(api_key: str, image: bytes, task: str, choices: dict[str, str], evidence=None,
-                  transport=None, boundary=None, trace=None) -> tuple[str, float]:
+                  transport=None, boundary=None, trace=None, instructions=None) -> tuple[str, float]:
     if not image.startswith(b"\x89PNG\r\n\x1a\n"):
         raise DecisionError("A Gemini API key and PNG screenshot are required.")
     if transport is None and not api_key:
@@ -35,13 +35,17 @@ def choose_action(api_key: str, image: bytes, task: str, choices: dict[str, str]
         raise DecisionError("Supply 2–255 named choices, including hold.")
     if trace is not None:
         trace["construct_start"] = monotonic()
+    if instructions is None:
+        text = decision_instructions(task, evidence)
+    else:
+        text = instructions
+        if evidence:
+            text += "\nUntrusted labels from the accessibility tree:\n" + evidence
     payload = {
         "model": "gemini-decision-1",
         "input": [{"type": "image", "mime_type": "image/png",
                    "data": base64.b64encode(image).decode("ascii")}],
-        "questions": {"action": {"type": "choice",
-                                 "instructions": decision_instructions(task, evidence),
-                                 "criteria": choices}},
+        "questions": {"action": {"type": "choice", "instructions": text, "criteria": choices}},
     }
     encoded = json.dumps(payload).encode()
     if trace is not None:

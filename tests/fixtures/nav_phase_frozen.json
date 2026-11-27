@@ -1,0 +1,5330 @@
+{
+  "frozen": {
+    "model": "gemini-decision-1",
+    "viewport": "1280x720@1",
+    "min_confidence": 0.8,
+    "agent_browser": "0.45.0",
+    "playwright": "excluded",
+    "provider_call_budget": 640,
+    "phase1_cases": 60,
+    "reserve_cases": 60,
+    "required_success": "ceil(95% of the actual denominator); 60 -> 57, 40 -> 38, 20 -> 19",
+    "scoring": "Eventual success requires the expected outcome and, for an acted case, the expected opened ids in order and the expected state. close-photo and ids starting with photo may appear as one recovery and do not by themselves fail an acted case. Any other extra id fails. A numeric thread id that was not expected is a wrong thread and fails. A hold or wait succeeds only when nothing was opened. First-attempt success also requires the exact opened list, zero wrong clicks, and no second observation. Expected answers are not read by the navigation code."
+  },
+  "cases": [
+    {
+      "id": "P001",
+      "split": "phase1",
+      "family": "older_above",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11001",
+            "name": "Nia",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "11002",
+            "name": "Omar",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11001"
+        ],
+        "state": "11001"
+      }
+    },
+    {
+      "id": "P002",
+      "split": "phase1",
+      "family": "older_above",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11003",
+            "name": "Omar",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "11004",
+            "name": "Pia",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11003"
+        ],
+        "state": "11003"
+      }
+    },
+    {
+      "id": "P003",
+      "split": "phase1",
+      "family": "older_above",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11005",
+            "name": "Pia",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "11006",
+            "name": "Quin",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11005"
+        ],
+        "state": "11005"
+      }
+    },
+    {
+      "id": "P004",
+      "split": "phase1",
+      "family": "older_above",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11007",
+            "name": "Quin",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "11008",
+            "name": "Rae",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11007"
+        ],
+        "state": "11007"
+      }
+    },
+    {
+      "id": "P005",
+      "split": "phase1",
+      "family": "older_below",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11009",
+            "name": "Nia",
+            "dot": true,
+            "time": "1h"
+          },
+          {
+            "id": "11010",
+            "name": "Omar",
+            "dot": true,
+            "time": "6h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11010"
+        ],
+        "state": "11010"
+      }
+    },
+    {
+      "id": "P006",
+      "split": "phase1",
+      "family": "older_below",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11011",
+            "name": "Omar",
+            "dot": true,
+            "time": "1h"
+          },
+          {
+            "id": "11012",
+            "name": "Pia",
+            "dot": true,
+            "time": "6h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11012"
+        ],
+        "state": "11012"
+      }
+    },
+    {
+      "id": "P007",
+      "split": "phase1",
+      "family": "older_below",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11013",
+            "name": "Pia",
+            "dot": true,
+            "time": "1h"
+          },
+          {
+            "id": "11014",
+            "name": "Quin",
+            "dot": true,
+            "time": "6h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11014"
+        ],
+        "state": "11014"
+      }
+    },
+    {
+      "id": "P008",
+      "split": "phase1",
+      "family": "older_below",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11015",
+            "name": "Quin",
+            "dot": true,
+            "time": "1h"
+          },
+          {
+            "id": "11016",
+            "name": "Rae",
+            "dot": true,
+            "time": "6h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11016"
+        ],
+        "state": "11016"
+      }
+    },
+    {
+      "id": "P009",
+      "split": "phase1",
+      "family": "equal_age",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11017",
+            "name": "Nia",
+            "dot": true,
+            "time": "2h"
+          },
+          {
+            "id": "11018",
+            "name": "Pia",
+            "dot": true,
+            "time": "2h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11018"
+        ],
+        "state": "11018"
+      }
+    },
+    {
+      "id": "P010",
+      "split": "phase1",
+      "family": "equal_age",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11019",
+            "name": "Omar",
+            "dot": true,
+            "time": "2h"
+          },
+          {
+            "id": "11020",
+            "name": "Quin",
+            "dot": true,
+            "time": "2h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11020"
+        ],
+        "state": "11020"
+      }
+    },
+    {
+      "id": "P011",
+      "split": "phase1",
+      "family": "order_only",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11021",
+            "name": "Nia",
+            "dot": true
+          },
+          {
+            "id": "11022",
+            "name": "Pia",
+            "dot": true
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11022"
+        ],
+        "state": "11022"
+      }
+    },
+    {
+      "id": "P012",
+      "split": "phase1",
+      "family": "order_only",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11023",
+            "name": "Omar",
+            "dot": true
+          },
+          {
+            "id": "11024",
+            "name": "Quin",
+            "dot": true
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11024"
+        ],
+        "state": "11024"
+      }
+    },
+    {
+      "id": "P013",
+      "split": "phase1",
+      "family": "single_unread",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11026",
+            "name": "Nia",
+            "dot": false,
+            "time": "4h"
+          },
+          {
+            "id": "11025",
+            "name": "Omar",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11025"
+        ],
+        "state": "11025"
+      }
+    },
+    {
+      "id": "P014",
+      "split": "phase1",
+      "family": "single_unread",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11028",
+            "name": "Omar",
+            "dot": false,
+            "time": "4h"
+          },
+          {
+            "id": "11027",
+            "name": "Pia",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11027"
+        ],
+        "state": "11027"
+      }
+    },
+    {
+      "id": "P015",
+      "split": "phase1",
+      "family": "aria_unread",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11029",
+            "name": "Nia",
+            "dot": false,
+            "time": "3h"
+          },
+          {
+            "id": "11030",
+            "name": "Rae",
+            "dot": false,
+            "time": "2h",
+            "aria": "Rae 2h unread"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11030"
+        ],
+        "state": "11030"
+      }
+    },
+    {
+      "id": "P016",
+      "split": "phase1",
+      "family": "aria_unread",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11031",
+            "name": "Omar",
+            "dot": false,
+            "time": "3h"
+          },
+          {
+            "id": "11032",
+            "name": "Sol",
+            "dot": false,
+            "time": "2h",
+            "aria": "Sol 2h unread"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11032"
+        ],
+        "state": "11032"
+      }
+    },
+    {
+      "id": "P017",
+      "split": "phase1",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11033",
+            "name": "Sam",
+            "dot": true,
+            "time": "6h"
+          },
+          {
+            "id": "11034",
+            "name": "Sam",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11033"
+        ],
+        "state": "11033"
+      }
+    },
+    {
+      "id": "P018",
+      "split": "phase1",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11035",
+            "name": "Sam",
+            "dot": true,
+            "time": "1h"
+          },
+          {
+            "id": "11036",
+            "name": "Sam",
+            "dot": true,
+            "time": "6h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11036"
+        ],
+        "state": "11036"
+      }
+    },
+    {
+      "id": "P019",
+      "split": "phase1",
+      "family": "race",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11037",
+            "name": "Sam",
+            "dot": true,
+            "time": "2h"
+          },
+          {
+            "id": "11038",
+            "name": "Sam",
+            "dot": true,
+            "time": "2h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11038"
+        ],
+        "state": "11038"
+      },
+      "mutate": "reorder"
+    },
+    {
+      "id": "P020",
+      "split": "phase1",
+      "family": "race",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11039",
+            "name": "Sam",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "11040",
+            "name": "Sam",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11039"
+        ],
+        "state": "11039"
+      },
+      "mutate": "reorder"
+    },
+    {
+      "id": "P021",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11041",
+            "name": "Nia",
+            "dot": true,
+            "time": "1h",
+            "aria": "Nia 1h unread"
+          },
+          {
+            "id": "11042",
+            "name": "Sol",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11041",
+          "reel",
+          "close"
+        ],
+        "state": "11041"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P022",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11043",
+            "name": "Omar",
+            "dot": true,
+            "time": "1h",
+            "aria": "Omar 1h unread"
+          },
+          {
+            "id": "11044",
+            "name": "Tao",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11043",
+          "reel",
+          "close"
+        ],
+        "state": "11043"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P023",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11045",
+            "name": "Pia",
+            "dot": true,
+            "time": "1h",
+            "aria": "Pia 1h unread"
+          },
+          {
+            "id": "11046",
+            "name": "Uma",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11045",
+          "reel",
+          "close"
+        ],
+        "state": "11045"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P024",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11047",
+            "name": "Quin",
+            "dot": true,
+            "time": "1h",
+            "aria": "Quin 1h unread"
+          },
+          {
+            "id": "11048",
+            "name": "Val",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11047",
+          "reel",
+          "close"
+        ],
+        "state": "11047"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P025",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11049",
+            "name": "Rae",
+            "dot": true,
+            "time": "1h",
+            "aria": "Rae 1h unread"
+          },
+          {
+            "id": "11050",
+            "name": "Wes",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11049",
+          "reel",
+          "close"
+        ],
+        "state": "11049"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P026",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11051",
+            "name": "Sol",
+            "dot": true,
+            "time": "1h",
+            "aria": "Sol 1h unread"
+          },
+          {
+            "id": "11052",
+            "name": "Xia",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11051",
+          "reel",
+          "close"
+        ],
+        "state": "11051"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P027",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11053",
+            "name": "Tao",
+            "dot": true,
+            "time": "1h",
+            "aria": "Tao 1h unread"
+          },
+          {
+            "id": "11054",
+            "name": "Yara",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11053",
+          "reel",
+          "close"
+        ],
+        "state": "11053"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P028",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11055",
+            "name": "Uma",
+            "dot": true,
+            "time": "1h",
+            "aria": "Uma 1h unread"
+          },
+          {
+            "id": "11056",
+            "name": "Zed",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11055",
+          "reel",
+          "close"
+        ],
+        "state": "11055"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P029",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11057",
+            "name": "Val",
+            "dot": true,
+            "time": "1h",
+            "aria": "Val 1h unread"
+          },
+          {
+            "id": "11058",
+            "name": "Anu",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11057",
+          "reel",
+          "close"
+        ],
+        "state": "11057"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P030",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11059",
+            "name": "Wes",
+            "dot": true,
+            "time": "1h",
+            "aria": "Wes 1h unread"
+          },
+          {
+            "id": "11060",
+            "name": "Bea",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11059",
+          "reel",
+          "close"
+        ],
+        "state": "11059"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P031",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11061",
+            "name": "Xia",
+            "dot": true,
+            "time": "1h",
+            "aria": "Xia 1h unread"
+          },
+          {
+            "id": "11062",
+            "name": "Cal",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11061",
+          "reel",
+          "close"
+        ],
+        "state": "11061"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P032",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11063",
+            "name": "Yara",
+            "dot": true,
+            "time": "1h",
+            "aria": "Yara 1h unread"
+          },
+          {
+            "id": "11064",
+            "name": "Dee",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11063",
+          "reel",
+          "close"
+        ],
+        "state": "11063"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P033",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11065",
+            "name": "Zed",
+            "dot": true,
+            "time": "1h",
+            "aria": "Zed 1h unread"
+          },
+          {
+            "id": "11066",
+            "name": "Eli",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11065",
+          "reel",
+          "close"
+        ],
+        "state": "11065"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P034",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11067",
+            "name": "Anu",
+            "dot": true,
+            "time": "1h",
+            "aria": "Anu 1h unread"
+          },
+          {
+            "id": "11068",
+            "name": "Fay",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11067",
+          "reel",
+          "close"
+        ],
+        "state": "11067"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P035",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11069",
+            "name": "Bea",
+            "dot": true,
+            "time": "1h",
+            "aria": "Bea 1h unread"
+          },
+          {
+            "id": "11070",
+            "name": "Gus",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11069",
+          "reel",
+          "close"
+        ],
+        "state": "11069"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P036",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11071",
+            "name": "Cal",
+            "dot": true,
+            "time": "1h",
+            "aria": "Cal 1h unread"
+          },
+          {
+            "id": "11072",
+            "name": "Nia",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11071",
+          "reel",
+          "close"
+        ],
+        "state": "11071"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P037",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11073",
+            "name": "Dee",
+            "dot": true,
+            "time": "1h",
+            "aria": "Dee 1h unread"
+          },
+          {
+            "id": "11074",
+            "name": "Omar",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11073",
+          "reel",
+          "close"
+        ],
+        "state": "11073"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P038",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11075",
+            "name": "Eli",
+            "dot": true,
+            "time": "1h",
+            "aria": "Eli 1h unread"
+          },
+          {
+            "id": "11076",
+            "name": "Pia",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11075",
+          "reel",
+          "close"
+        ],
+        "state": "11075"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P039",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11077",
+            "name": "Fay",
+            "dot": true,
+            "time": "1h",
+            "aria": "Fay 1h unread"
+          },
+          {
+            "id": "11078",
+            "name": "Quin",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11077",
+          "reel",
+          "close"
+        ],
+        "state": "11077"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P040",
+      "split": "phase1",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11079",
+            "name": "Gus",
+            "dot": true,
+            "time": "1h",
+            "aria": "Gus 1h unread"
+          },
+          {
+            "id": "11080",
+            "name": "Rae",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "11079",
+          "reel",
+          "close"
+        ],
+        "state": "11079"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "P041",
+      "split": "phase1",
+      "family": "unknown_order",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11081",
+            "name": "Nia",
+            "dot": true
+          },
+          {
+            "id": "11082",
+            "name": "Omar",
+            "dot": true
+          }
+        ],
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P042",
+      "split": "phase1",
+      "family": "unknown_order",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11083",
+            "name": "Omar",
+            "dot": true
+          },
+          {
+            "id": "11084",
+            "name": "Pia",
+            "dot": true
+          }
+        ],
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P043",
+      "split": "phase1",
+      "family": "unknown_order",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11085",
+            "name": "Pia",
+            "dot": true
+          },
+          {
+            "id": "11086",
+            "name": "Quin",
+            "dot": true
+          }
+        ],
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P044",
+      "split": "phase1",
+      "family": "unknown_order",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11087",
+            "name": "Quin",
+            "dot": true
+          },
+          {
+            "id": "11088",
+            "name": "Rae",
+            "dot": true
+          }
+        ],
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P045",
+      "split": "phase1",
+      "family": "older_reel",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11089/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11089",
+        "state": "11089",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-old",
+            "aria": "Shared reel",
+            "caption": "Yesterday"
+          },
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "This morning"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P046",
+      "split": "phase1",
+      "family": "older_reel",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11090/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11090",
+        "state": "11090",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-old",
+            "aria": "Shared reel",
+            "caption": "Yesterday"
+          },
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "This morning"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P047",
+      "split": "phase1",
+      "family": "outgoing_reel",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11091/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11091",
+        "state": "11091",
+        "messages": [
+          {
+            "side": "out",
+            "kind": "reel",
+            "id": "reel-out",
+            "aria": "Shared reel",
+            "caption": "Sent clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P048",
+      "split": "phase1",
+      "family": "outgoing_reel",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11092/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11092",
+        "state": "11092",
+        "messages": [
+          {
+            "side": "out",
+            "kind": "reel",
+            "id": "reel-out",
+            "aria": "Shared reel",
+            "caption": "Sent clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P049",
+      "split": "phase1",
+      "family": "photo",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11093/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11093",
+        "state": "11093",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "photo",
+            "id": "photo",
+            "aria": "Photo",
+            "caption": "A picture"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P050",
+      "split": "phase1",
+      "family": "photo",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11094/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11094",
+        "state": "11094",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "photo",
+            "id": "photo",
+            "aria": "Photo",
+            "caption": "A picture"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P051",
+      "split": "phase1",
+      "family": "link",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11095/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11095",
+        "state": "11095",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "link",
+            "id": "link",
+            "aria": "Link",
+            "text": "A website"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P052",
+      "split": "phase1",
+      "family": "link",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11096/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11096",
+        "state": "11096",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "link",
+            "id": "link",
+            "aria": "Link",
+            "text": "A website"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P053",
+      "split": "phase1",
+      "family": "two_reels",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11097/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11097",
+        "state": "11097",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-a",
+            "aria": "Shared reel",
+            "caption": "A clip"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-b",
+            "aria": "Shared reel",
+            "caption": "Another clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P054",
+      "split": "phase1",
+      "family": "two_reels",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11098/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11098",
+        "state": "11098",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-a",
+            "aria": "Shared reel",
+            "caption": "A clip"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-b",
+            "aria": "Shared reel",
+            "caption": "Another clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P055",
+      "split": "phase1",
+      "family": "insufficient",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11099/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11099",
+        "state": "11099",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "attachment",
+            "id": "attachment",
+            "aria": "Attachment"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P056",
+      "split": "phase1",
+      "family": "insufficient",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11100/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11100",
+        "state": "11100",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "attachment",
+            "id": "attachment",
+            "aria": "Attachment"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "P057",
+      "split": "phase1",
+      "family": "stale",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11101",
+            "name": "Nia",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "mutate": "replace"
+    },
+    {
+      "id": "P058",
+      "split": "phase1",
+      "family": "stale",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11102",
+            "name": "Omar",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "mutate": "replace"
+    },
+    {
+      "id": "P059",
+      "split": "phase1",
+      "family": "wrong_tab",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/explore/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "11103",
+            "name": "Nia",
+            "dot": true,
+            "time": "1h"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "bound_path": "/direct/inbox/"
+    },
+    {
+      "id": "P060",
+      "split": "phase1",
+      "family": "wrong_thread",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/11104/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "11104",
+        "state": "11104",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "bound_thread": "1001"
+    },
+    {
+      "id": "R001",
+      "split": "reserve",
+      "family": "older_above",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31001",
+            "name": "Uma",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "31002",
+            "name": "Val",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31001"
+        ],
+        "state": "31001"
+      }
+    },
+    {
+      "id": "R002",
+      "split": "reserve",
+      "family": "older_above",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31003",
+            "name": "Val",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "31004",
+            "name": "Wes",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31003"
+        ],
+        "state": "31003"
+      }
+    },
+    {
+      "id": "R003",
+      "split": "reserve",
+      "family": "older_above",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31005",
+            "name": "Wes",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "31006",
+            "name": "Xia",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31005"
+        ],
+        "state": "31005"
+      }
+    },
+    {
+      "id": "R004",
+      "split": "reserve",
+      "family": "older_above",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31007",
+            "name": "Xia",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "31008",
+            "name": "Yara",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31007"
+        ],
+        "state": "31007"
+      }
+    },
+    {
+      "id": "R005",
+      "split": "reserve",
+      "family": "older_below",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31009",
+            "name": "Uma",
+            "dot": true,
+            "time": "1h"
+          },
+          {
+            "id": "31010",
+            "name": "Val",
+            "dot": true,
+            "time": "6h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31010"
+        ],
+        "state": "31010"
+      }
+    },
+    {
+      "id": "R006",
+      "split": "reserve",
+      "family": "older_below",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31011",
+            "name": "Val",
+            "dot": true,
+            "time": "1h"
+          },
+          {
+            "id": "31012",
+            "name": "Wes",
+            "dot": true,
+            "time": "6h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31012"
+        ],
+        "state": "31012"
+      }
+    },
+    {
+      "id": "R007",
+      "split": "reserve",
+      "family": "older_below",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31013",
+            "name": "Wes",
+            "dot": true,
+            "time": "1h"
+          },
+          {
+            "id": "31014",
+            "name": "Xia",
+            "dot": true,
+            "time": "6h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31014"
+        ],
+        "state": "31014"
+      }
+    },
+    {
+      "id": "R008",
+      "split": "reserve",
+      "family": "older_below",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31015",
+            "name": "Xia",
+            "dot": true,
+            "time": "1h"
+          },
+          {
+            "id": "31016",
+            "name": "Yara",
+            "dot": true,
+            "time": "6h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31016"
+        ],
+        "state": "31016"
+      }
+    },
+    {
+      "id": "R009",
+      "split": "reserve",
+      "family": "equal_age",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31017",
+            "name": "Uma",
+            "dot": true,
+            "time": "2h"
+          },
+          {
+            "id": "31018",
+            "name": "Wes",
+            "dot": true,
+            "time": "2h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31018"
+        ],
+        "state": "31018"
+      }
+    },
+    {
+      "id": "R010",
+      "split": "reserve",
+      "family": "equal_age",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31019",
+            "name": "Val",
+            "dot": true,
+            "time": "2h"
+          },
+          {
+            "id": "31020",
+            "name": "Xia",
+            "dot": true,
+            "time": "2h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31020"
+        ],
+        "state": "31020"
+      }
+    },
+    {
+      "id": "R011",
+      "split": "reserve",
+      "family": "order_only",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31021",
+            "name": "Uma",
+            "dot": true
+          },
+          {
+            "id": "31022",
+            "name": "Wes",
+            "dot": true
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31022"
+        ],
+        "state": "31022"
+      }
+    },
+    {
+      "id": "R012",
+      "split": "reserve",
+      "family": "order_only",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31023",
+            "name": "Val",
+            "dot": true
+          },
+          {
+            "id": "31024",
+            "name": "Xia",
+            "dot": true
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31024"
+        ],
+        "state": "31024"
+      }
+    },
+    {
+      "id": "R013",
+      "split": "reserve",
+      "family": "single_unread",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31026",
+            "name": "Uma",
+            "dot": false,
+            "time": "4h"
+          },
+          {
+            "id": "31025",
+            "name": "Val",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31025"
+        ],
+        "state": "31025"
+      }
+    },
+    {
+      "id": "R014",
+      "split": "reserve",
+      "family": "single_unread",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31028",
+            "name": "Val",
+            "dot": false,
+            "time": "4h"
+          },
+          {
+            "id": "31027",
+            "name": "Wes",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31027"
+        ],
+        "state": "31027"
+      }
+    },
+    {
+      "id": "R015",
+      "split": "reserve",
+      "family": "aria_unread",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31029",
+            "name": "Uma",
+            "dot": false,
+            "time": "3h"
+          },
+          {
+            "id": "31030",
+            "name": "Yara",
+            "dot": false,
+            "time": "2h",
+            "aria": "Yara 2h unread"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31030"
+        ],
+        "state": "31030"
+      }
+    },
+    {
+      "id": "R016",
+      "split": "reserve",
+      "family": "aria_unread",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31031",
+            "name": "Val",
+            "dot": false,
+            "time": "3h"
+          },
+          {
+            "id": "31032",
+            "name": "Zed",
+            "dot": false,
+            "time": "2h",
+            "aria": "Zed 2h unread"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31032"
+        ],
+        "state": "31032"
+      }
+    },
+    {
+      "id": "R017",
+      "split": "reserve",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31033",
+            "name": "Sam",
+            "dot": true,
+            "time": "6h"
+          },
+          {
+            "id": "31034",
+            "name": "Sam",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31033"
+        ],
+        "state": "31033"
+      }
+    },
+    {
+      "id": "R018",
+      "split": "reserve",
+      "family": "duplicate",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31035",
+            "name": "Sam",
+            "dot": true,
+            "time": "1h"
+          },
+          {
+            "id": "31036",
+            "name": "Sam",
+            "dot": true,
+            "time": "6h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31036"
+        ],
+        "state": "31036"
+      }
+    },
+    {
+      "id": "R019",
+      "split": "reserve",
+      "family": "race",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31037",
+            "name": "Sam",
+            "dot": true,
+            "time": "2h"
+          },
+          {
+            "id": "31038",
+            "name": "Sam",
+            "dot": true,
+            "time": "2h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31038"
+        ],
+        "state": "31038"
+      },
+      "mutate": "reorder"
+    },
+    {
+      "id": "R020",
+      "split": "reserve",
+      "family": "race",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31039",
+            "name": "Sam",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "31040",
+            "name": "Sam",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31039"
+        ],
+        "state": "31039"
+      },
+      "mutate": "reorder"
+    },
+    {
+      "id": "R021",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31041",
+            "name": "Uma",
+            "dot": true,
+            "time": "1h",
+            "aria": "Uma 1h unread"
+          },
+          {
+            "id": "31042",
+            "name": "Zed",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31041",
+          "reel",
+          "close"
+        ],
+        "state": "31041"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R022",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31043",
+            "name": "Val",
+            "dot": true,
+            "time": "1h",
+            "aria": "Val 1h unread"
+          },
+          {
+            "id": "31044",
+            "name": "Anu",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31043",
+          "reel",
+          "close"
+        ],
+        "state": "31043"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R023",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31045",
+            "name": "Wes",
+            "dot": true,
+            "time": "1h",
+            "aria": "Wes 1h unread"
+          },
+          {
+            "id": "31046",
+            "name": "Bea",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31045",
+          "reel",
+          "close"
+        ],
+        "state": "31045"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R024",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31047",
+            "name": "Xia",
+            "dot": true,
+            "time": "1h",
+            "aria": "Xia 1h unread"
+          },
+          {
+            "id": "31048",
+            "name": "Cal",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31047",
+          "reel",
+          "close"
+        ],
+        "state": "31047"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R025",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31049",
+            "name": "Yara",
+            "dot": true,
+            "time": "1h",
+            "aria": "Yara 1h unread"
+          },
+          {
+            "id": "31050",
+            "name": "Dee",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31049",
+          "reel",
+          "close"
+        ],
+        "state": "31049"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R026",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31051",
+            "name": "Zed",
+            "dot": true,
+            "time": "1h",
+            "aria": "Zed 1h unread"
+          },
+          {
+            "id": "31052",
+            "name": "Eli",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31051",
+          "reel",
+          "close"
+        ],
+        "state": "31051"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R027",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31053",
+            "name": "Anu",
+            "dot": true,
+            "time": "1h",
+            "aria": "Anu 1h unread"
+          },
+          {
+            "id": "31054",
+            "name": "Fay",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31053",
+          "reel",
+          "close"
+        ],
+        "state": "31053"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R028",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31055",
+            "name": "Bea",
+            "dot": true,
+            "time": "1h",
+            "aria": "Bea 1h unread"
+          },
+          {
+            "id": "31056",
+            "name": "Gus",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31055",
+          "reel",
+          "close"
+        ],
+        "state": "31055"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R029",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31057",
+            "name": "Cal",
+            "dot": true,
+            "time": "1h",
+            "aria": "Cal 1h unread"
+          },
+          {
+            "id": "31058",
+            "name": "Nia",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31057",
+          "reel",
+          "close"
+        ],
+        "state": "31057"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R030",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31059",
+            "name": "Dee",
+            "dot": true,
+            "time": "1h",
+            "aria": "Dee 1h unread"
+          },
+          {
+            "id": "31060",
+            "name": "Omar",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31059",
+          "reel",
+          "close"
+        ],
+        "state": "31059"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R031",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31061",
+            "name": "Eli",
+            "dot": true,
+            "time": "1h",
+            "aria": "Eli 1h unread"
+          },
+          {
+            "id": "31062",
+            "name": "Pia",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31061",
+          "reel",
+          "close"
+        ],
+        "state": "31061"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R032",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31063",
+            "name": "Fay",
+            "dot": true,
+            "time": "1h",
+            "aria": "Fay 1h unread"
+          },
+          {
+            "id": "31064",
+            "name": "Quin",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31063",
+          "reel",
+          "close"
+        ],
+        "state": "31063"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R033",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31065",
+            "name": "Gus",
+            "dot": true,
+            "time": "1h",
+            "aria": "Gus 1h unread"
+          },
+          {
+            "id": "31066",
+            "name": "Rae",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31065",
+          "reel",
+          "close"
+        ],
+        "state": "31065"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R034",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31067",
+            "name": "Nia",
+            "dot": true,
+            "time": "1h",
+            "aria": "Nia 1h unread"
+          },
+          {
+            "id": "31068",
+            "name": "Sol",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31067",
+          "reel",
+          "close"
+        ],
+        "state": "31067"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R035",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31069",
+            "name": "Omar",
+            "dot": true,
+            "time": "1h",
+            "aria": "Omar 1h unread"
+          },
+          {
+            "id": "31070",
+            "name": "Tao",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31069",
+          "reel",
+          "close"
+        ],
+        "state": "31069"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R036",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31071",
+            "name": "Pia",
+            "dot": true,
+            "time": "1h",
+            "aria": "Pia 1h unread"
+          },
+          {
+            "id": "31072",
+            "name": "Uma",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31071",
+          "reel",
+          "close"
+        ],
+        "state": "31071"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R037",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31073",
+            "name": "Quin",
+            "dot": true,
+            "time": "1h",
+            "aria": "Quin 1h unread"
+          },
+          {
+            "id": "31074",
+            "name": "Val",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31073",
+          "reel",
+          "close"
+        ],
+        "state": "31073"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R038",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31075",
+            "name": "Rae",
+            "dot": true,
+            "time": "1h",
+            "aria": "Rae 1h unread"
+          },
+          {
+            "id": "31076",
+            "name": "Wes",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31075",
+          "reel",
+          "close"
+        ],
+        "state": "31075"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R039",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31077",
+            "name": "Sol",
+            "dot": true,
+            "time": "1h",
+            "aria": "Sol 1h unread"
+          },
+          {
+            "id": "31078",
+            "name": "Xia",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31077",
+          "reel",
+          "close"
+        ],
+        "state": "31077"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R040",
+      "split": "reserve",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31079",
+            "name": "Tao",
+            "dot": true,
+            "time": "1h",
+            "aria": "Tao 1h unread"
+          },
+          {
+            "id": "31080",
+            "name": "Yara",
+            "dot": false,
+            "time": "5h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "31079",
+          "reel",
+          "close"
+        ],
+        "state": "31079"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "R041",
+      "split": "reserve",
+      "family": "unknown_order",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31081",
+            "name": "Uma",
+            "dot": true
+          },
+          {
+            "id": "31082",
+            "name": "Val",
+            "dot": true
+          }
+        ],
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R042",
+      "split": "reserve",
+      "family": "unknown_order",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31083",
+            "name": "Val",
+            "dot": true
+          },
+          {
+            "id": "31084",
+            "name": "Wes",
+            "dot": true
+          }
+        ],
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R043",
+      "split": "reserve",
+      "family": "unknown_order",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31085",
+            "name": "Wes",
+            "dot": true
+          },
+          {
+            "id": "31086",
+            "name": "Xia",
+            "dot": true
+          }
+        ],
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R044",
+      "split": "reserve",
+      "family": "unknown_order",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31087",
+            "name": "Xia",
+            "dot": true
+          },
+          {
+            "id": "31088",
+            "name": "Yara",
+            "dot": true
+          }
+        ],
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R045",
+      "split": "reserve",
+      "family": "older_reel",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31089/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31089",
+        "state": "31089",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-old",
+            "aria": "Shared reel",
+            "caption": "Yesterday"
+          },
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "This morning"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R046",
+      "split": "reserve",
+      "family": "older_reel",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31090/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31090",
+        "state": "31090",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-old",
+            "aria": "Shared reel",
+            "caption": "Yesterday"
+          },
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "This morning"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R047",
+      "split": "reserve",
+      "family": "outgoing_reel",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31091/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31091",
+        "state": "31091",
+        "messages": [
+          {
+            "side": "out",
+            "kind": "reel",
+            "id": "reel-out",
+            "aria": "Shared reel",
+            "caption": "Sent clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R048",
+      "split": "reserve",
+      "family": "outgoing_reel",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31092/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31092",
+        "state": "31092",
+        "messages": [
+          {
+            "side": "out",
+            "kind": "reel",
+            "id": "reel-out",
+            "aria": "Shared reel",
+            "caption": "Sent clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R049",
+      "split": "reserve",
+      "family": "photo",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31093/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31093",
+        "state": "31093",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "photo",
+            "id": "photo",
+            "aria": "Photo",
+            "caption": "A picture"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R050",
+      "split": "reserve",
+      "family": "photo",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31094/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31094",
+        "state": "31094",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "photo",
+            "id": "photo",
+            "aria": "Photo",
+            "caption": "A picture"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R051",
+      "split": "reserve",
+      "family": "link",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31095/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31095",
+        "state": "31095",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "link",
+            "id": "link",
+            "aria": "Link",
+            "text": "A website"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R052",
+      "split": "reserve",
+      "family": "link",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31096/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31096",
+        "state": "31096",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "link",
+            "id": "link",
+            "aria": "Link",
+            "text": "A website"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R053",
+      "split": "reserve",
+      "family": "two_reels",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31097/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31097",
+        "state": "31097",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-a",
+            "aria": "Shared reel",
+            "caption": "A clip"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-b",
+            "aria": "Shared reel",
+            "caption": "Another clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R054",
+      "split": "reserve",
+      "family": "two_reels",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31098/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31098",
+        "state": "31098",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-a",
+            "aria": "Shared reel",
+            "caption": "A clip"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel-b",
+            "aria": "Shared reel",
+            "caption": "Another clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R055",
+      "split": "reserve",
+      "family": "insufficient",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31099/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31099",
+        "state": "31099",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "attachment",
+            "id": "attachment",
+            "aria": "Attachment"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R056",
+      "split": "reserve",
+      "family": "insufficient",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31100/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31100",
+        "state": "31100",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "attachment",
+            "id": "attachment",
+            "aria": "Attachment"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "R057",
+      "split": "reserve",
+      "family": "stale",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31101",
+            "name": "Uma",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "mutate": "replace"
+    },
+    {
+      "id": "R058",
+      "split": "reserve",
+      "family": "stale",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31102",
+            "name": "Val",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "mutate": "replace"
+    },
+    {
+      "id": "R059",
+      "split": "reserve",
+      "family": "wrong_tab",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/explore/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "31103",
+            "name": "Nia",
+            "dot": true,
+            "time": "1h"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "bound_path": "/direct/inbox/"
+    },
+    {
+      "id": "R060",
+      "split": "reserve",
+      "family": "wrong_thread",
+      "kind": "hold",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/31104/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "31104",
+        "state": "31104",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "bound_thread": "1001"
+    }
+  ]
+}

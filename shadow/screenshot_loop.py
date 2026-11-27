@@ -516,6 +516,12 @@ def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None, na
         prefer_unread=False, observe=None, transport=None, boundary=None, bound_thread=None,
         bound_path=None, bound_account=None):
     """One verified click, scroll, wait, or hold. Never clicks a stale box."""
+    if observe == "agent-nav":
+        from shadow.nav_phase import navigate as phase_navigate
+        return phase_navigate(browser, vision, task=task, procedure="phase1", timeout=timeout,
+                              pause=sleep, transport=transport, boundary=boundary,
+                              bound_thread=bound_thread, bound_path=bound_path,
+                              bound_account=bound_account)
     if observe:
         from shadow.nav_observe import navigate
         return navigate(browser, vision, task=task, arm=observe, prefer_unread=prefer_unread,
@@ -990,14 +996,15 @@ class LiveVision:
         self.keys = keys
 
     def choose(self, png, task, choices, candidates, evidence=None, transport=None, boundary=None,
-               trace=None):
+               trace=None, instructions=None):
         del candidates
         last = None
         started = time.monotonic()
         for key in self.keys:
             try:
                 choice, confidence = choose_action(key, png, task, choices, evidence=evidence,
-                                                   transport=transport, boundary=boundary, trace=trace)
+                                                   transport=transport, boundary=boundary, trace=trace,
+                                                   instructions=instructions)
                 log.info("decision_1 latency_ms=%s", round((time.monotonic() - started) * 1000))
                 return choice, confidence
             except DecisionError as exc:

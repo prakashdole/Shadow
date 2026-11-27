@@ -1,0 +1,364 @@
+{
+  "frozen": {
+    "model": "gemini-decision-1",
+    "viewport": "1280x720@1",
+    "min_confidence": 0.8,
+    "agent_browser": "0.45.0",
+    "playwright": "excluded",
+    "provider_call_budget": 640,
+    "phase1_cases": 60,
+    "reserve_cases": 60,
+    "required_success": "ceil(95% of the actual denominator); 60 -> 57, 40 -> 38, 20 -> 19",
+    "scoring": "Eventual success requires the expected outcome and, for an acted case, the expected opened ids in order and the expected state. close-photo and ids starting with photo may appear as one recovery and do not by themselves fail an acted case. Any other extra id fails. A numeric thread id that was not expected is a wrong thread and fails. A hold or wait succeeds only when nothing was opened. First-attempt success also requires the exact opened list, zero wrong clicks, and no second observation. Expected answers are not read by the navigation code."
+  },
+  "known_sources": [
+    "H017",
+    "H018",
+    "H019",
+    "H020",
+    "H021",
+    "H022",
+    "H041",
+    "H042",
+    "H043",
+    "H044"
+  ],
+  "cases": [
+    {
+      "id": "D001",
+      "split": "dev",
+      "family": "older_above",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "41001",
+            "name": "Dev",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "41002",
+            "name": "Other",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "41001"
+        ],
+        "state": "41001"
+      }
+    },
+    {
+      "id": "D002",
+      "split": "dev",
+      "family": "unknown_order",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "41031",
+            "name": "Amy",
+            "dot": true
+          },
+          {
+            "id": "41032",
+            "name": "Bea",
+            "dot": true
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      }
+    },
+    {
+      "id": "D003",
+      "split": "dev",
+      "family": "journey",
+      "kind": "journey",
+      "task": "journey",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "41041",
+            "name": "Joy",
+            "dot": true,
+            "time": "1h",
+            "aria": "Joy 1h unread"
+          },
+          {
+            "id": "41042",
+            "name": "Kim",
+            "dot": false,
+            "time": "4h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "41041",
+          "reel",
+          "close"
+        ],
+        "state": "41041"
+      },
+      "journey": [
+        "row",
+        "reel",
+        "close"
+      ]
+    },
+    {
+      "id": "D004",
+      "split": "dev",
+      "family": "reel",
+      "kind": "act",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/41011/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "41011",
+        "state": "41011",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Earlier today"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "reel"
+        ],
+        "state": "reel"
+      },
+      "inject": "low",
+      "procedures": [
+        "phase1"
+      ]
+    },
+    {
+      "id": "D005",
+      "split": "dev",
+      "family": "recovery",
+      "kind": "act",
+      "task": "reel",
+      "screen": {
+        "screen": "thread",
+        "path": "/direct/t/41021/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "thread": "41021",
+        "state": "41021",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "photo",
+            "id": "photo",
+            "aria": "Photo",
+            "caption": "Not a reel"
+          },
+          {
+            "side": "in",
+            "kind": "reel",
+            "id": "reel",
+            "aria": "Shared reel",
+            "caption": "Latest clip"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "reel"
+        ],
+        "state": "reel"
+      },
+      "inject": "photo_first",
+      "procedures": [
+        "phase1"
+      ]
+    },
+    {
+      "id": "D006",
+      "split": "dev",
+      "family": "hooks",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "41001",
+            "name": "Dev",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "41002",
+            "name": "Other",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "41001"
+        ],
+        "state": "41001"
+      },
+      "strip_hooks": true
+    },
+    {
+      "id": "D007",
+      "split": "dev",
+      "family": "delay",
+      "kind": "act",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "41001",
+            "name": "Dev",
+            "dot": true,
+            "time": "5h"
+          },
+          {
+            "id": "41002",
+            "name": "Other",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ],
+        "delay": 700
+      },
+      "expect": {
+        "outcome": "acted",
+        "opened": [
+          "41001"
+        ],
+        "state": "41001"
+      }
+    },
+    {
+      "id": "D008",
+      "split": "dev",
+      "family": "stale",
+      "kind": "hold",
+      "task": "row",
+      "screen": {
+        "screen": "inbox",
+        "path": "/direct/inbox/",
+        "account": "pilot",
+        "account_label": "Account pilot",
+        "links": true,
+        "rows": [
+          {
+            "id": "41051",
+            "name": "Stu",
+            "dot": true,
+            "time": "1h"
+          }
+        ],
+        "order_label": "Newest at top",
+        "messages": [
+          {
+            "side": "in",
+            "kind": "text",
+            "text": "Opened thread"
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "hold",
+        "opened": []
+      },
+      "mutate": "replace"
+    }
+  ]
+}
