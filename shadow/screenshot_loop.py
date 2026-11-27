@@ -518,7 +518,7 @@ def act(browser, vision, *, task, before_click=None, timeout=3.0, sleep=None, na
     """One verified click, scroll, wait, or hold. Never clicks a stale box."""
     if observe == "agent-nav":
         from shadow.nav_phase import navigate as phase_navigate
-        return phase_navigate(browser, vision, task=task, procedure="phase1", timeout=timeout,
+        return phase_navigate(browser, vision, task=task, procedure="phase2", timeout=timeout,
                               pause=sleep, transport=transport, boundary=boundary,
                               bound_thread=bound_thread, bound_path=bound_path,
                               bound_account=bound_account)

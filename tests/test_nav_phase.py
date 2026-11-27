@@ -21,6 +21,22 @@ class OrderTests(TestCase):
         self.assertEqual(required_successes(20), 19)
         self.assertIsNone(list_order("Conversations"))
 
+    def test_badge_or_name_marks_unread_and_a_read_word_conflicts(self):
+        from PIL import Image
+        from shadow.nav_phase import signal_unread
+
+        image = Image.new("RGB", (1280, 720), (24, 33, 52))
+        draw = image.load()
+        for y in range(159, 166):
+            for x in range(431, 438):
+                draw[x, y] = (74, 93, 249)
+        box = (16, 136, 454, 188)
+        self.assertEqual(signal_unread(image, box, "Omar 1h"), "unread")
+        self.assertEqual(signal_unread(image, box, "Omar 1h read"), "conflict")
+        blank = Image.new("RGB", (1280, 720), (24, 33, 52))
+        self.assertEqual(signal_unread(blank, box, "Omar 2h unread"), "unread")
+        self.assertEqual(signal_unread(blank, box, "Omar 2h"), "read")
+
     def test_missing_time_is_not_a_tie(self):
         class Row:
             def __init__(self, name, y):

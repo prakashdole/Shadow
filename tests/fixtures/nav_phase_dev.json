@@ -192,7 +192,8 @@
       },
       "inject": "low",
       "procedures": [
-        "phase1"
+        "phase1",
+        "phase2"
       ]
     },
     {
@@ -234,7 +235,8 @@
       },
       "inject": "photo_first",
       "procedures": [
-        "phase1"
+        "phase1",
+        "phase2"
       ]
     },
     {

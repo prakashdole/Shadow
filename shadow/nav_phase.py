@@ -131,6 +131,32 @@ def context_crop(card, side):
     return box
 
 
+def row_has_dot(image, box):
+    """Indigo unread badge inside the row. A missing badge is not a read label."""
+    pixels = image.load()
+    left, top, right, bottom = [int(value) for value in box]
+    center = (top + bottom) // 2
+    hits = []
+    for y in range(max(0, max(top, center - 9)), min(image.height, min(bottom, center + 10))):
+        for x in range(max(0, max(left, right - 44)), min(image.width, max(left, right - 13))):
+            red, green, channel = pixels[x, y][:3]
+            if red <= 140 and green <= 170 and channel - green >= 75:
+                hits.append((x, y))
+    if not 24 <= len(hits) <= 90:
+        return False
+    xs, ys = zip(*hits)
+    return 5 <= max(xs) - min(xs) <= 12 and 5 <= max(ys) - min(ys) <= 12
+
+
+def signal_unread(image, box, name):
+    named = _UNREAD.search(name or "") is not None
+    dot = row_has_dot(image, box)
+    explicit_read = re.search(r"\bread\b", name or "", re.I) is not None and not named
+    if explicit_read and dot:
+        return "conflict"
+    return "unread" if named or dot else "read"
+
+
 def crop_covers(crop, card):
     left, top, right, bottom = [int(value) for value in card]
     if not (crop[0] <= left and crop[1] <= top and crop[2] >= right and crop[3] >= bottom):
@@ -309,7 +335,7 @@ def _click(session, ref):
 
 def navigate(session, vision, *, task, procedure="phase1", timeout=3.0, pause=None,
              transport=None, boundary=None, bound_thread=None, bound_path=None, bound_account=None):
-    if procedure not in ("baseline", "phase1"):
+    if procedure not in ("baseline", "phase1", "phase2"):
         raise AgentError("bad_procedure")
     pause = sleep if pause is None else pause
     spans, bag = Spans(), _bag()
@@ -363,6 +389,9 @@ def _row(session, vision, spans, bag, *, procedure, timeout, pause, transport, b
     if procedure == "baseline":
         return _baseline_row(session, vision, spans, bag, raw, image, snapshot, url, rows,
                              timeout=timeout, pause=pause, transport=transport, boundary=boundary)
+    if procedure == "phase2":
+        return _phase2_row(session, spans, bag, raw, image, snapshot, url, rows,
+                           timeout=timeout, pause=pause, boundary=boundary, screen=screen)
     for index, control in enumerate(rows, start=1):
         control.choice = f"c{index}"
     if len(rows) > 6:
@@ -384,6 +413,22 @@ def _row(session, vision, spans, bag, *, procedure, timeout, pause, transport, b
     picked = choose_oldest([control for control in rows if control.choice in members], list_order(snapshot))
     if picked is None:
         return _finish(spans, bag, outcome="hold", reason="unordered" if members else "no_unread", screen=screen)
+    return _open_row(session, spans, bag, picked, timeout=timeout, pause=pause, screen=screen)
+
+
+def _phase2_row(session, spans, bag, raw, image, snapshot, url, rows, *, timeout, pause, boundary, screen):
+    """Unread marks come from the badge or the accessible name. Python orders them."""
+    states = [signal_unread(image, control.box, control.name) for control in rows]
+    if "conflict" in states:
+        return _finish(spans, bag, outcome="hold", reason="conflict", screen=screen)
+    members = [control for control, state in zip(rows, states) if state == "unread"]
+    picked = choose_oldest(members, list_order(snapshot))
+    if picked is None:
+        return _finish(spans, bag, outcome="hold",
+                       reason="no_unread" if not members else "unordered", screen=screen)
+    if boundary is not None:
+        boundary({"image": raw, "original": raw, "kind": "full", "url": url,
+                  "crop": None, "card": None, "source_frame": raw})
     return _open_row(session, spans, bag, picked, timeout=timeout, pause=pause, screen=screen)
 
 
@@ -517,7 +562,7 @@ def _reel(session, vision, spans, bag, *, procedure, timeout, pause, transport, 
         choice, confidence = _ask(session, vision, spans, bag, encoded, TASK_REEL, choices, evidence,
                                   None, transport, boundary, raw, "full", url)
         picked = _select_reel(choice, confidence, cards, snapshot, procedure, first=True)
-        if picked is None and procedure == "phase1" and choice != "wait":
+        if picked is None and procedure in ("phase1", "phase2") and choice != "wait":
             picked, choice, confidence = _second_look(
                 session, vision, spans, bag, cards, snapshot, thread, transport, boundary, pause)
         if choice == "wait" and picked is None:
@@ -539,7 +584,7 @@ def _reel(session, vision, spans, bag, *, procedure, timeout, pause, transport, 
             photo = False if ready else _photo_ready(session)
         if ready:
             return _finish(spans, bag, outcome="acted", reason="card", action=picked.choice, screen="overlay")
-        if photo and procedure == "phase1" and not recovery:
+        if photo and procedure in ("phase1", "phase2") and not recovery:
             bag["wrong_clicks"] += 1
             if not _close_photo(session, spans, thread, timeout, pause):
                 return _finish(spans, bag, outcome="wrong", reason="wrong_target", wrong_action=True,

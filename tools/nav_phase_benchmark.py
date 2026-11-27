@@ -161,11 +161,11 @@ def baseline_choice(payload):
 
 def scripted_choice(payload, procedure):
     instructions = payload["questions"]["action"]["instructions"]
-    if procedure == "phase1" and UNREAD_ASK in instructions:
+    if procedure in ("phase1", "phase2") and UNREAD_ASK in instructions:
         return unread_choice(payload)
-    if procedure == "phase1" and (REEL_LOOK in instructions or "Select the visible reel" in instructions):
+    if procedure in ("phase1", "phase2") and (REEL_LOOK in instructions or "Select the visible reel" in instructions):
         return reel_choice(payload)
-    if procedure == "phase1" and "close control" in instructions.lower():
+    if procedure in ("phase1", "phase2") and "close control" in instructions.lower():
         rows = _rows(_criteria(payload))
         return rows[0] if len(rows) == 1 else "hold"
     return baseline_choice(payload)
@@ -452,13 +452,15 @@ def run_pairs(session, base, cases, vision, *, live=False, procedures=PROCEDURES
             if live and spent >= budget:
                 raise SystemExit(f"Stopped. Provider budget {budget} is spent.")
             if live:
-                time.sleep(1.2)
+                time.sleep(2.0)
             row = run_case(session, base, case, procedure, vision, gate, live=live)
             spent += row["calls"]
-            if live and row["outcome"] == "pending" and row["reason"] == "rate_limited":
+            limited = row["reason"] == "rate_limited" or any(
+                item.get("reason") == "rate_limited" for item in row["decisions"])
+            if live and limited:
                 if spent >= budget:
                     raise SystemExit(f"Stopped. Provider budget {budget} is spent.")
-                time.sleep(25)
+                time.sleep(30)
                 row = run_case(session, base, case, procedure, vision, gate, live=live)
                 spent += row["calls"]
                 row["retried_rate_limit"] = True
@@ -473,6 +475,7 @@ def main(argv=None):
     parser.add_argument("--allow-reserve", action="store_true")
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--timing", action="store_true")
+    parser.add_argument("--candidate", choices=("phase1", "phase2"), default="phase1")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
@@ -489,15 +492,16 @@ def main(argv=None):
         vision = LiveVision([key])
     else:
         vision = LiveVision(["offline"])
+    procedures = ("baseline", args.candidate)
     started = time.monotonic()
     with serve() as base, TemporaryDirectory() as profile, AgentSession(profile, find_chromium()) as session:
         startup = time.monotonic() - started
-        rows, fidelity = run_pairs(session, base, cases, vision, live=args.live)
+        rows, fidelity = run_pairs(session, base, cases, vision, live=args.live, procedures=procedures)
         timing = None
         if args.timing and not args.live:
             timing = {}
             sample = next(case for case in load_cases("dev") if case["id"] == "D001")
-            for procedure in PROCEDURES:
+            for procedure in procedures:
                 cold = run_case(session, base, sample, procedure, vision, None)
                 outside, e2e = [], []
                 for _ in range(100):
@@ -508,8 +512,9 @@ def main(argv=None):
                                      "outside_p50": percentile(outside, 0.50),
                                      "outside_p95": percentile(outside, 0.95),
                                      "e2e_p50": percentile(e2e, 0.50), "e2e_p95": percentile(e2e, 0.95)}
-    payload = {"split": args.split, "live": args.live, "startup_s": startup, "environment": environment(),
-               "fidelity": fidelity, "scorecard": {name: scorecard(rows, name) for name in PROCEDURES},
+    payload = {"split": args.split, "live": args.live, "candidate": args.candidate,
+               "startup_s": startup, "environment": environment(),
+               "fidelity": fidelity, "scorecard": {name: scorecard(rows, name) for name in procedures},
                "timing": timing, "rows": rows}
     text = json.dumps(payload, indent=2)
     if args.output:
