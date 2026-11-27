@@ -22,6 +22,7 @@ from shadow.reply_lab import (
     kiro_reply, load_archive, make_handler, normalize_lineup, openai_reply, bedrock_reply,
     prepared_lineup, reply_system, sarvam_reply, tally, _bubbles, _reply_json,
 )
+from shadow.screenshot_loop import voice_text
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -51,22 +52,24 @@ class ReplyLabTests(TestCase):
         frozen = freeze_case(case)
         self.assertEqual(frozen["system"], reply_system(extra=tuple(case["rules"])))
         self.assertIn(STYLE_RULES["tone"]["serious"], frozen["system"])
-        self.assertIn("Prakash's Instagram DM voice", frozen["system"])
+        self.assertEqual(frozen["system"].count(voice_text()), 1)
         self.assertEqual(frozen["user"], json.dumps(
             {"bubbles": case["bubbles"], "media": case["media"]}, ensure_ascii=False))
         self.assertNotIn("Priya", frozen["system"] + frozen["user"])
         self.assertNotIn("silence", frozen["user"])
 
     def test_reference_in_the_voice_guide_is_not_sent(self):
+        reference = "the lighthouse is blue"
         case_id = self.lab.add_case(
             title="Leaked example", contact="Maya", language="en", tone="casual",
             bubbles=_bubbles(("left", "did the file arrive?")),
-            reference="Ha mil gaya", authorship="owner_written")
+            reference=reference, authorship="synthetic")
         before = len(self.lab.calls())
-        with self.assertRaises(ValueError):
-            self.lab.generate(case_id)
+        with patch("shadow.screenshot_loop.voice_text", return_value=f"Example: {reference}"):
+            with self.assertRaisesRegex(ValueError, "reference reply appears in the prompt"):
+                self.lab.generate(case_id)
+            self.assertIn("stays out of scored runs", self.lab.case(case_id)["blocked"])
         self.assertEqual(len(self.lab.calls()), before)
-        self.assertIn("stays out of scored runs", self.lab.case(case_id)["blocked"])
 
     def test_reference_inside_the_transcript_is_not_sent(self):
         case_id = self.lab.add_case(
