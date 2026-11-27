@@ -48,7 +48,8 @@ def _failure(result, http_status=None):
 
 
 class OpenAITransport:
-    def __init__(self, *, base_url, api_key, models, max_tokens=1024, context_chars=32000, json_object=False):
+    def __init__(self, *, base_url, api_key, models, max_tokens=1024, context_chars=32000, json_object=False,
+                 temperature=None, body_extra=None, timeout=20):
         url = urlsplit(base_url)
         if (url.scheme != "https" or not url.hostname or url.username or url.password
                 or url.query or url.fragment):
@@ -64,29 +65,49 @@ class OpenAITransport:
             raise ValueError("Invalid provider input budget")
         self.base_url, self._key = base_url.rstrip("/"), api_key
         self.models, self.max_tokens, self.context_chars = dict(models), max_tokens, context_chars
+        if temperature is not None and (isinstance(temperature, bool) or type(temperature) not in (int, float)
+                                        or not 0 <= temperature <= 1):
+            raise ValueError("temperature must be between 0 and 1")
         self._json_object = json_object
+        self._temperature = temperature
+        if body_extra is not None and (
+                type(body_extra) is not dict or any(
+                    type(key) is not str or type(value) not in (str, int, float, bool, type(None))
+                    for key, value in body_extra.items())):
+            raise ValueError("Provider extras must be plain values")
+        if isinstance(timeout, bool) or type(timeout) is not int or not 1 <= timeout <= 120:
+            raise ValueError("Invalid provider timeout")
+        self._body_extra = None if body_extra is None else dict(body_extra)
+        self._timeout = timeout
         self._opener = build_opener(_NoRedirect())
 
     def configuration(self, role):
-        return {"provider": "openai_compatible", "base_url": self.base_url,
-                "model": self.models[role], "max_tokens": self.max_tokens,
-                "context_chars": self.context_chars, "socket_timeout_seconds": 20,
-                "transport_attempts": 1, "structured_output": "strict_json_validation"}
+        reported = {"provider": "openai_compatible", "base_url": self.base_url,
+                    "model": self.models[role], "max_tokens": self.max_tokens,
+                    "context_chars": self.context_chars, "socket_timeout_seconds": self._timeout,
+                    "transport_attempts": 1, "structured_output": "strict_json_validation"}
+        if self._temperature is not None:
+            reported["temperature"] = self._temperature
+        return reported
 
     def _request(self, role, system, input_text):
         body = {"model": self.models[role], "messages": [
             {"role": "system", "content": system}, {"role": "user", "content": input_text}],
             "max_tokens": self.max_tokens, "stream": False}
+        if self._temperature is not None:
+            body["temperature"] = self._temperature
         if self._json_object:
             body["response_format"] = {"type": "json_object"}
         if urlsplit(self.base_url).hostname == "api.minimax.io":
             body["reasoning_split"] = True
+        if self._body_extra:
+            body.update(self._body_extra)
         request = Request(self.base_url + "/chat/completions",
                           data=json.dumps(body, ensure_ascii=False).encode(),
                           headers={"Authorization": "Bearer " + self._key,
                                    "Content-Type": "application/json"}, method="POST")
         try:
-            with self._opener.open(request, timeout=20) as response:
+            with self._opener.open(request, timeout=self._timeout) as response:
                 payload = response.read(262145)
         except HTTPError as exc:
             status = exc.code
